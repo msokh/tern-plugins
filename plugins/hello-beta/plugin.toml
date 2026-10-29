@@ -1,0 +1,5 @@
+schema = 1
+id = "hello-beta"
+name = "Hello Beta"
+version = "0.1.0"
+window = "window.luau"
