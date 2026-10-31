@@ -1,0 +1,7 @@
+schema = 1
+id = "automations"
+name = "Automations"
+version = "0.1.0"
+description = "Starts agents on a cron schedule, each run in its own Tern session."
+host = "host.luau"
+window = "window.luau"
