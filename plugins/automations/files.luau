@@ -1,32 +1,26 @@
 --!strict
 local config = require("./config")
+local paths = require("./paths")
 
 local HOME = tern.getenv("HOME") or ""
-local STATE = `{HOME}/.local/state/tern-automations`
 
-local paths = {
-	home = HOME,
-	config = `{HOME}/.config/tern-automations/automations.json`,
-	requests = `{STATE}/requests`,
-	status = `{STATE}/status.md`,
-}
+local resolved = paths.resolve(HOME, tern.getenv("TERN_AUTOMATIONS_HOME"))
 
 local MAX_CONFIG_BYTES = 1024 * 1024
 
-local function loadConfig(): ({ config.Automation }, { string })
-	if not tern.fs.exists(paths.config) then
-		return {}, { `no config at {paths.config}` }
+local function loadDefinitions(): ({ config.Definition }, { string })
+	if not tern.fs.exists(resolved.config) then
+		return {}, { `no config at {resolved.config}` }
 	end
-	local ok, doc = pcall(function()
-		return tern.json.decode(tern.fs.read(paths.config, MAX_CONFIG_BYTES))
-	end)
+	local ok, text = pcall(tern.fs.read, resolved.config, MAX_CONFIG_BYTES)
 	if not ok then
-		return {}, { `cannot read {paths.config}: {doc}` }
+		return {}, { "cannot read the config file" }
 	end
-	return config.parse(doc, HOME)
+	local doc = config.parseDocument(text, tern.json.decode)
+	return config.definitions(doc), doc.errors
 end
 
 return {
-	paths = paths,
-	loadConfig = loadConfig,
+	paths = resolved,
+	loadDefinitions = loadDefinitions,
 }

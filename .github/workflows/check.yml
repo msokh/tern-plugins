@@ -24,5 +24,11 @@ jobs:
         env:
           TERN_PLUGINS_DENYLIST: ${{ secrets.TERN_PLUGINS_DENYLIST }}
         run: scripts/check-public.sh history
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
       - name: Automations tests
-        run: luau plugins/automations/tests/run.luau
+        run: |
+          luau plugins/automations/tests/run.luau
+          luau plugins/automations/tests/ui.luau
+          node --test plugins/automations/tests/receiver.test.mjs
