@@ -96,8 +96,7 @@ function Input.selection(field: Field): string
 	return string.sub(field.text, byteAt(field.text, first), byteAt(field.text, last) - 1)
 end
 
-local function replace(field: Field, text: string, typing: boolean?)
-	local first, last = bounds(field)
+local function replace(field: Field, first: number, last: number, text: string, typing: boolean?)
 	local updated = string.sub(field.text, 1, byteAt(field.text, first) - 1)
 		.. text
 		.. string.sub(field.text, byteAt(field.text, last))
@@ -225,12 +224,15 @@ function Input.key(field: Field, key: Key): (boolean, string?)
 		moveLine(field, name == "down", key.shift)
 	elseif name == "backspace" or name == "delete" then
 		local first, last = bounds(field)
-		if first == last then
-			field.anchor = if name == "backspace" then math.max(0, field.cursor - 1) else math.min(length, field.cursor + 1)
+		if first == last and name == "backspace" then
+			first = math.max(0, first - 1)
+		elseif first == last then
+			last = math.min(length, last + 1)
 		end
-		replace(field, "")
+		replace(field, first, last, "")
 	elseif name == "enter" and field.multiline and not (key.ctrl or key.meta) then
-		replace(field, "\n")
+		local first, last = bounds(field)
+		replace(field, first, last, "\n")
 	elseif key.text ~= nil and key.text ~= "" and (name == "paste" or not (key.ctrl or key.meta)) then
 		if name == "tab" or name == "escape" or name == "esc" or name == "enter" then
 			return false, nil
@@ -239,7 +241,8 @@ function Input.key(field: Field, key: Key): (boolean, string?)
 		if not Input.valid(typed, field.multiline) then
 			return true, "Use text without control characters."
 		end
-		replace(field, typed, typing)
+		local first, last = bounds(field)
+		replace(field, first, last, typed, typing)
 	else
 		return false, nil
 	end

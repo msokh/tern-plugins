@@ -21,6 +21,7 @@ tern plugin install github.com/msokh/tern-plugins/plugins/automations
 The manager supports editing, search, status filters, pause, and execution history. **Run now** skips the precheck, including for paused automations. **Pause** stops automatic runs.
 
 Use Cmd+Z to undo text edits and Cmd+Shift+Z to redo them. Returning focus to a field starts a separate typing group.
+Undo restores the text, caret, and selection from before an edit.
 
 **Automations: Show runs** opens execution history. **Automations: Run now** offers a picker without opening the manager.
 
