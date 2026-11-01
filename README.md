@@ -4,7 +4,7 @@ Independent Tern plugins, one package per directory under `plugins/`, each with 
 
 | Plugin | What it does |
 |---|---|
-| [automations](plugins/automations) | Starts agents on a cron schedule, each run in its own Tern session. |
+| [automations](plugins/automations) | Creates scheduled and event-triggered agent runs in Tern sessions, with a native manager and execution history. |
 | hello-alpha, hello-beta | Minimal examples: a palette command that shows a greeting. |
 
 ## Install

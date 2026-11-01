@@ -1,0 +1,131 @@
+import assert from "node:assert/strict";
+import { spawn, spawnSync } from "node:child_process";
+import { once } from "node:events";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { createInterface } from "node:readline";
+import { after, before, test } from "node:test";
+import { fileURLToPath } from "node:url";
+import { createReceiver } from "../receiver.mjs";
+
+const TOKEN = "example-token-for-tests-only";
+let dir;
+let receiver;
+let base;
+
+before(async () => {
+	dir = mkdtempSync(join(tmpdir(), "automations-receiver-"));
+	receiver = createReceiver({ token: TOKEN, stateDir: dir, now: () => 1_800_000_000_000 });
+	const address = await receiver.listen(0);
+	assert.equal(address.address, "127.0.0.1");
+	base = `http://127.0.0.1:${address.port}/events`;
+});
+
+after(async () => {
+	await receiver.close();
+	rmSync(dir, { recursive: true, force: true });
+});
+
+const post = (body, headers = {}) =>
+	fetch(base, {
+		method: "POST",
+		headers: { "content-type": "application/json", authorization: `Bearer ${TOKEN}`, ...headers },
+		body: typeof body === "string" ? body : JSON.stringify(body),
+	});
+
+const event = (id) => ({ id, source: "github", event: "pull_request", attributes: { repo: "example-org/example-repo" }, payload: { n: 1 } });
+
+test("a missing or wrong bearer is refused before anything touches disk", async () => {
+	assert.equal((await post(event("a"), { authorization: "" })).status, 401);
+	assert.equal((await post(event("a"), { authorization: "Bearer wrong" })).status, 401);
+	assert.equal((await post(event("a"), { authorization: `Basic ${TOKEN}` })).status, 401);
+	assert.equal(existsSync(join(dir, "events")), false);
+});
+
+test("an invalid payload is refused and writes nothing", async () => {
+	assert.equal((await post({ ...event("b"), source: "email" })).status, 400);
+	assert.equal((await post({ ...event("b"), extra: 1 })).status, 400);
+	assert.equal((await post("not json")).status, 400);
+	assert.equal((await post(event("bad id"))).status, 400);
+	assert.equal(existsSync(receiver.inbox) ? readdirSync(receiver.inbox).length : 0, 0);
+});
+
+test("an oversized body is refused", async () => {
+	const big = { ...event("c"), payload: "x".repeat(70 * 1024) };
+	assert.equal((await post(big)).status, 413);
+});
+
+test("a valid event lands in the inbox, owner-only, stamped with its arrival", async () => {
+	const res = await post(event("d1"));
+	assert.equal(res.status, 202);
+	const [name] = readdirSync(receiver.inbox).filter((n) => !n.startsWith("."));
+	assert.match(name, /^github-[0-9a-f]{32}\.json$/);
+	const stored = JSON.parse(readFileSync(join(receiver.inbox, name), "utf8"));
+	assert.equal(stored.id, "d1");
+	assert.equal(stored.received_at, 1_800_000_000);
+	assert.equal(statSync(join(receiver.inbox, name)).mode & 0o777, 0o600);
+	assert.equal(readdirSync(receiver.inbox).some((n) => n.startsWith(".tmp-")), false);
+});
+
+test("a repeated delivery id is a duplicate, even after the inbox file was consumed", async () => {
+	const again = await post(event("d1"));
+	assert.equal(again.status, 200);
+	assert.equal((await again.json()).status, "duplicate");
+	for (const name of readdirSync(receiver.inbox)) rmSync(join(receiver.inbox, name));
+	assert.equal((await (await post(event("d1"))).json()).status, "duplicate");
+	assert.equal(readdirSync(receiver.inbox).length, 0);
+});
+
+test("only POST /events exists", async () => {
+	assert.equal((await fetch(base)).status, 405);
+	assert.equal((await fetch(base.replace("/events", "/other"))).status, 404);
+});
+
+test("a short or missing token refuses to start", () => {
+	assert.throws(() => createReceiver({ token: undefined, stateDir: dir }));
+	assert.throws(() => createReceiver({ token: "short", stateDir: dir }));
+});
+
+test("launch.sh feeds the prompt file on stdin and keeps arguments intact", () => {
+	const script = join(dirname(fileURLToPath(import.meta.url)), "..", "launch.sh");
+	const prompt = join(dir, "prompt.md");
+	writeFileSync(prompt, "line one\n$(not run) `not run`\n");
+	const out = spawnSync("sh", [script, prompt, "sh", "-c", 'cat; printf "%s|" "$@"', "arg0", "a b", "$HOME"], { encoding: "utf8" });
+	assert.equal(out.status, 0);
+	assert.equal(out.stdout, "line one\n$(not run) `not run`\na b|$HOME|");
+});
+
+test("the receiver CLI accepts events through a symlinked plugin directory", { timeout: 5000 }, async (t) => {
+	const plugin = dirname(dirname(fileURLToPath(import.meta.url)));
+	const linked = join(dir, "linked-plugin");
+	symlinkSync(plugin, linked, "dir");
+	const home = join(dir, "cli-data");
+	const child = spawn(process.execPath, [join(linked, "receiver.mjs"), "--port", "0"], {
+		env: { ...process.env, TERN_AUTOMATIONS_HOME: home, TERN_AUTOMATIONS_RECEIVER_TOKEN: TOKEN },
+		stdio: ["ignore", "pipe", "ignore"],
+	});
+	t.after(async () => {
+		if (child.exitCode === null && child.signalCode === null) {
+			const exited = once(child, "exit");
+			child.kill();
+			await exited;
+		}
+	});
+	const lines = createInterface({ input: child.stdout });
+	t.after(() => lines.close());
+	const line = await Promise.race([
+		once(lines, "line").then(([text]) => text),
+		once(child, "exit").then(([code]) => { throw new Error(`receiver exited ${code} before listening`); }),
+	]);
+	const address = /127\.0\.0\.1:\d+/.exec(line)?.[0];
+	const response = await fetch(`http://${address}/events`, {
+		method: "POST",
+		headers: { "content-type": "application/json", authorization: `Bearer ${TOKEN}` },
+		body: JSON.stringify({ id: "cli-delivery", source: "webhook", event: "created" }),
+	});
+	assert.equal(response.status, 202);
+	const inbox = join(home, "state", "events", "inbox");
+	const stored = readdirSync(inbox).filter((name) => !name.startsWith("."));
+	assert.equal(JSON.parse(readFileSync(join(inbox, stored[0]), "utf8")).id, "cli-delivery");
+});

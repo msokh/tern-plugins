@@ -86,10 +86,7 @@ local function parse(text: string): (Cron?, string?)
 	}, nil
 end
 
-local function matches(cron: Cron, d: Date): boolean
-	if not (cron.minute[d.min] and cron.hour[d.hour] and cron.month[d.month]) then
-		return false
-	end
+local function dayMatches(cron: Cron, d: Date): boolean
 	local domHit = cron.dom[d.day] == true
 	local dowHit = cron.dow[d.wday - 1] == true
 	-- Why: standard cron ORs the two day fields when both are restricted.
@@ -99,6 +96,10 @@ local function matches(cron: Cron, d: Date): boolean
 		return domHit
 	end
 	return domHit or dowHit
+end
+
+local function matches(cron: Cron, d: Date): boolean
+	return cron.minute[d.min] == true and cron.hour[d.hour] == true and cron.month[d.month] == true and dayMatches(cron, d)
 end
 
 -- The latest minute in (after, upto] that matches, as epoch seconds; both bounds are minute-aligned.
@@ -113,8 +114,26 @@ local function latest(cron: Cron, after: number, upto: number, toDate: (number) 
 	return nil
 end
 
+-- The first minute after `after` (and within `horizon` seconds of it) that matches, as epoch seconds.
+local function nextSlot(cron: Cron, after: number, horizon: number, toDate: (number) -> Date): number?
+	local t = after - after % 60 + 60
+	local stop = after + horizon
+	while t <= stop do
+		local d = toDate(t)
+		if not (cron.month[d.month] and dayMatches(cron, d) and cron.hour[d.hour]) then
+			t += (60 - d.min) * 60
+		elseif not cron.minute[d.min] then
+			t += 60
+		else
+			return t
+		end
+	end
+	return nil
+end
+
 return {
 	parse = parse,
 	matches = matches,
 	latest = latest,
+	next = nextSlot,
 }
