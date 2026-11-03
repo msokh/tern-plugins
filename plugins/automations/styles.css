@@ -78,6 +78,7 @@ button.sf.sf-el.sf-act[data-role~='automations.tab'][data-mark='pick'] { color: 
 [data-role~='automations.name'] { font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 [data-role~='automations.value'] { overflow-wrap: anywhere; }
 [data-role~='automations.listFooter'], [data-role~='automations.emptyRow'] { height: 40px; padding: 0 16px; align-items: center; color: var(--t3); }
+[data-role~='automations.emptyRow'] { line-height: 40px; }
 [data-role~='automations.runsSummary'] { align-items: center; height: 48px; padding: 0 16px; border-bottom: 1px solid color-mix(in srgb, var(--t4) 25%, transparent); }
 [data-role~='automations.pill'] { padding: 0 8px; line-height: 20px; border-radius: 999px; font-size: 11px; color: var(--t3); background: color-mix(in srgb, var(--t4) 18%, transparent); align-self: flex-start; white-space: nowrap; }
 [data-role~='automations.pill'][data-mark='pick'] { color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, transparent); }

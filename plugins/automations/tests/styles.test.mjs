@@ -31,3 +31,25 @@ test("every screen shares the page rule", () => {
 	assert.doesNotMatch(css, /editorPage|runPage/);
 	assert.deepEqual([...css.matchAll(/(?<![-\w(])max-width:\s*(\d+)px/g)].map((m) => Number(m[1])), [1440]);
 });
+
+const view = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "view.luau"), "utf8");
+
+function declarationsFor(role) {
+	const out = [];
+	for (const [, selector, body] of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+		if (selector.includes(`'${role}'`)) out.push(body);
+	}
+	return out.join(";");
+}
+
+test("a text leaf with a fixed height centers its line", () => {
+	const roles = new Set();
+	for (const [, list] of view.matchAll(/\btext\((?:[^()\n]|\([^()\n]*\))*?"(automations\.[\w.]+(?: automations\.[\w.]+)*)"\s*[,)]/g)) {
+		for (const role of list.split(" ")) roles.add(role);
+	}
+	for (const role of roles) {
+		const body = declarationsFor(role);
+		const height = body.match(/(?<![-\w])height:\s*(\d+)px/);
+		if (height) assert.match(body, new RegExp(`line-height:\\s*${height[1]}px`), `${role} sets height ${height[1]}px but not a matching line-height`);
+	}
+});
