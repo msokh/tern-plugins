@@ -25,7 +25,7 @@ button.sf.sf-el.sf-act[data-role~='automations.iconButton']:hover,
 button.sf.sf-el.sf-act[data-role~='automations.backButton']:hover { color: var(--t1); background: color-mix(in srgb, var(--accent) 9%, transparent); }
 button.sf.sf-el.sf-act[data-role~='automations.primaryButton'] { color: var(--accent); border-color: var(--accent); }
 button.sf.sf-el.sf-act[data-role~='automations.primaryButton']:hover { color: var(--t1); background: color-mix(in srgb, var(--accent) 12%, transparent); }
-button.sf.sf-el.sf-act[data-role~='automations.backButton'] { border-color: transparent; color: var(--t3); padding: 0 8px 0 0; }
+button.sf.sf-el.sf-act[data-role~='automations.backButton'] { border-color: transparent; color: var(--t3); padding: 0 8px; margin-left: -8px; }
 button.sf.sf-el.sf-act[data-role~='automations.iconButton'] { width: 32px; padding: 0; border-color: transparent; color: var(--t3); }
 button.sf.sf-el.sf-act[data-role~='automations.segmentButton'][data-mark='pick'] { color: var(--t1); background: color-mix(in srgb, var(--accent) 10%, transparent); border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
 button.sf.sf-el.sf-act[data-role~='automations.button']:focus-visible,
