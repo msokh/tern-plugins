@@ -71,12 +71,15 @@ export type Draft = {
 	nextUid: number,
 }
 
-export type Mode = "overview" | "editor" | "run"
+export type Mode = "overview" | "detail" | "editor" | "run"
 export type Tab = "automations" | "runs"
+export type DetailTab = "overview" | "runs"
 export type StatusFilter = "all" | "enabled" | "paused"
 
 export type State = {
 	mode: Mode,
+	backTo: Mode,
+	detailTab: DetailTab,
 	tab: Tab,
 	filter: StatusFilter,
 	selected: string?,
