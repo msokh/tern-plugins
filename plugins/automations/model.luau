@@ -144,6 +144,19 @@ function Model.workspaceLabel(id: string): string
 	return WORKSPACE_NOUN[id] or id
 end
 
+local SUMMARY_CHARS = 140
+
+-- The first line of `text`, cut to a length that reads at a glance; the editor holds the whole text.
+function Model.summary(text: string): string
+	local line = string.match(text, "^%s*([^\n]*)") or ""
+	local length = utf8.len(line)
+	if length == nil or length <= SUMMARY_CHARS then
+		return line
+	end
+	local cut = string.sub(line, 1, utf8.offset(line, SUMMARY_CHARS + 1) - 1)
+	return string.gsub(cut, "%s+$", "") .. "…"
+end
+
 function Model.emptySnapshot(): Snapshot
 	return { definitions = {}, runs = {}, errors = {}, nextRuns = {}, health = "" }
 end
