@@ -64,8 +64,8 @@ local function promptText(instructions: string, eventJson: string?): string
 end
 
 -- `tern new session` argv: the program's exit ends the session on success, and stays open to read otherwise.
-local function sessionArgv(session: string, cwd: string, program: { string }): { string }
-	local out = { "tern", "new", "session", session, "--json", "--cwd", cwd, "--end-on-success", "--" }
+local function sessionArgv(exe: string, session: string, cwd: string, program: { string }): { string }
+	local out = { exe, "new", "session", session, "--json", "--cwd", cwd, "--end-on-success", "--" }
 	for _, arg in program do
 		table.insert(out, arg)
 	end

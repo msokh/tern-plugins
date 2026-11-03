@@ -17,9 +17,28 @@ local function format(fmt: string, epoch: number): string
 	return if type(text) == "string" then text else ""
 end
 
+-- A plugin host's PATH is only the system directories, so `tern` itself is found by absolute path.
+local function ternExecutable(): string?
+	local home = tern.getenv("HOME") or ""
+	local candidates = {
+		tern.getenv("TERN_EXE"),
+		`{home}/.local/bin/tern`,
+		"/Applications/Tern.app/Contents/MacOS/tern",
+		"/opt/homebrew/bin/tern",
+		"/usr/local/bin/tern",
+	}
+	for _, path in candidates do
+		if path and path ~= "" and tern.fs.exists(path) then
+			return path
+		end
+	end
+	return nil
+end
+
 return engine.create({
 	host = tern,
 	paths = files.paths,
 	clock = { time = os.time, date = toDate, format = format, mono = tern.now },
 	pluginDir = tern.plugin.dir,
+	ternExe = ternExecutable(),
 })

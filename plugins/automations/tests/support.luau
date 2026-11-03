@@ -174,7 +174,7 @@ local function failed(status: number): engine.ProcessOut
 end
 
 -- `files` and `kv` can be shared between two fakes to model a restart.
-local function newFake(root: string, files: { [string]: string }?, kv: { [string]: unknown }?, startAt: number?): Fake
+local function newFake(root: string, files: { [string]: string }?, kv: { [string]: unknown }?, startAt: number?, ternExe: (string | false)?): Fake
 	local fileMap: { [string]: string } = files or {}
 	local kvMap: { [string]: unknown } = kv or {}
 	local dirs: { [string]: boolean } = {}
@@ -296,6 +296,7 @@ local function newFake(root: string, files: { [string]: string }?, kv: { [string
 			end,
 		},
 		pluginDir = "/example-plugin",
+		ternExe = if ternExe == false then nil else (ternExe or "/example/tern"),
 	})
 	local function paneExit(pane: number, status: number)
 		local handler = handlers.pane_exited
