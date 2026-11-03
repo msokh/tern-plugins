@@ -34,6 +34,7 @@ export type Run = {
 	status: number?,
 	detail: string?,
 	endedAt: number?,
+	pane: number?,
 }
 
 export type Snapshot = {
@@ -51,6 +52,8 @@ export type Runtime = {
 	runNow: (id: string) -> (boolean, string?),
 	revision: (id: string) -> string?,
 	subscribe: (callback: () -> ()) -> () -> (),
+	output: (id: string, key: string) -> string?,
+	openSession: (id: string, key: string, done: (boolean, string?) -> ()) -> (),
 }
 
 export type Choice = { id: string, label: string }
@@ -68,7 +71,7 @@ export type Draft = {
 	nextUid: number,
 }
 
-export type Mode = "overview" | "editor"
+export type Mode = "overview" | "editor" | "run"
 export type Tab = "automations" | "runs"
 export type StatusFilter = "all" | "enabled" | "paused"
 
@@ -77,6 +80,9 @@ export type State = {
 	tab: Tab,
 	filter: StatusFilter,
 	selected: string?,
+	runId: string?,
+	promptOpen: boolean,
+	output: string?,
 	search: Input.Field,
 	draft: Draft?,
 	focus: string?,
@@ -599,7 +605,7 @@ function Model.triggerLines(definition: Definition): { TriggerLine }
 	local lines = {}
 	for _, trigger in definition.triggers do
 		if trigger.kind == "schedule" then
-			table.insert(lines, { kind = "Schedule", detail = trigger.cron })
+			table.insert(lines, { kind = "Schedule", detail = Model.scheduleLabel(trigger.cron) })
 		else
 			local detail = trigger.event
 			if trigger.filter ~= "" then
@@ -658,13 +664,90 @@ function Model.ago(at: number, now: number): string
 	return `{plural(seconds // 86400, "day")} ago`
 end
 
+local WEEKDAYS = { "Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays" }
+
+local function clockOf(minute: string, hour: string): string?
+	if string.match(minute, "^%d+$") == nil or string.match(hour, "^%d+$") == nil then
+		return nil
+	end
+	return `{tonumber(hour)}:{string.format("%02d", tonumber(minute) or 0)}`
+end
+
+-- A cron in words for the shapes people write most; anything else is a "Custom schedule".
+function Model.scheduleLabel(cron: string): string
+	local minute, hour, day, month, weekday = string.match(cron, "^%s*(%S+)%s+(%S+)%s+(%S+)%s+(%S+)%s+(%S+)%s*$")
+	if minute == nil or hour == nil or day ~= "*" or month ~= "*" then
+		return "Custom schedule"
+	end
+	if hour == "*" and weekday == "*" and string.match(minute, "^%d+$") then
+		return `Hourly at :{string.format("%02d", tonumber(minute) or 0)}`
+	end
+	local clock = clockOf(minute, hour)
+	if clock == nil then
+		return "Custom schedule"
+	elseif weekday == "*" then
+		return `Daily at {clock}`
+	elseif weekday == "1-5" then
+		return `Weekdays at {clock}`
+	end
+	local index = tonumber(string.match(weekday, "^([0-7])$"))
+	if index ~= nil then
+		return `{WEEKDAYS[(index % 7) + 1]} at {clock}`
+	end
+	return "Custom schedule"
+end
+
+function Model.inTime(at: number, now: number): string
+	local seconds = math.max(at - now, 0)
+	if seconds < 60 then
+		return "in under a minute"
+	elseif seconds < 3600 then
+		return `in {seconds // 60}m`
+	elseif seconds < 86400 then
+		return `in {seconds // 3600}h`
+	end
+	return `in {seconds // 86400}d`
+end
+
+function Model.duration(run: Run): string?
+	if run.endedAt == nil then
+		return nil
+	end
+	local seconds = math.max(run.endedAt - run.at, 0)
+	if seconds < 60 then
+		return `{seconds}s`
+	elseif seconds < 3600 then
+		return `{seconds // 60}m {seconds % 60}s`
+	end
+	return `{seconds // 3600}h {(seconds % 3600) // 60}m`
+end
+
+function Model.findRun(runs: { Run }, id: string?): Run?
+	for _, run in runs do
+		if run.id == id then
+			return run
+		end
+	end
+	return nil
+end
+
+function Model.runSummary(runs: { Run }): string
+	local completed = 0
+	for _, run in runs do
+		if run.phase == "exited" and (run.status == nil or run.status == 0) then
+			completed += 1
+		end
+	end
+	return `{#runs} {if #runs == 1 then "run" else "runs"} · {completed} completed`
+end
+
 function Model.nextRun(definition: Definition, snapshot: Snapshot, now: number): (string, string?)
 	if not definition.enabled then
 		return "Paused", nil
 	end
 	local at = snapshot.nextRuns[definition.id]
 	if at ~= nil then
-		return Model.when(at, now), nil
+		return `{Model.when(at, now)} · {Model.inTime(at, now)}`, nil
 	end
 	for _, trigger in definition.triggers do
 		if trigger.kind == "event" then

@@ -63,6 +63,7 @@ export type RunView = {
 	status: number?,
 	detail: string?,
 	endedAt: number?,
+	pane: number?,
 }
 
 export type Snapshot = {
@@ -81,6 +82,8 @@ export type Runtime = {
 	revision: (id: string) -> string?,
 	runNow: (id: string) -> (boolean, string?),
 	subscribe: (callback: () -> ()) -> () -> (),
+	output: (id: string, key: string) -> string?,
+	openSession: (id: string, key: string, done: (boolean, string?) -> ()) -> (),
 	tick: () -> (),
 }
 
@@ -97,6 +100,7 @@ local LAUNCH_TIMEOUT_MS = 30 * 1000
 local GIT_TIMEOUT_MS = 60 * 1000
 local MAX_CONFIG_BYTES = 1024 * 1024
 local MAX_EVENT_BYTES = 128 * 1024
+local MAX_OUTPUT_BYTES = 1024 * 1024
 local EVENTS_PER_TICK = 50
 local SEEN_EVENTS = 500
 local KEEP_BACKUPS = 20
@@ -432,11 +436,12 @@ local function create(env: Env): Runtime
 			conclude(def.id, run, "launch_failed", "cannot find the tern executable", nil)
 			return
 		end
-		local program = runner.agentArgv(def, p.home, promptFile, `{env.pluginDir}/launch.sh`)
+		local program, stdin = runner.agentProgram(def, p.home, promptFile)
 		if def.agent == "command" and ev then
 			program = runner.withEventFile(program, `{runDir}/event.json`)
 		end
-		local failed = spawn(runner.sessionArgv(exe, run.session, cwd, program), { timeout_ms = LAUNCH_TIMEOUT_MS }, function(result)
+		local argv = runner.launchArgv(`{env.pluginDir}/launch.sh`, `{runDir}/output.txt`, if stdin then promptFile else nil, program)
+		local failed = spawn(runner.sessionArgv(exe, run.session, cwd, argv), { timeout_ms = LAUNCH_TIMEOUT_MS }, function(result)
 			local block: unknown = nil
 			if result.status == 0 then
 				local ok, decoded = pcall(host.json.decode, result.stdout)
@@ -815,6 +820,7 @@ local function create(env: Env): Runtime
 					status = run.status,
 					detail = run.detail,
 					endedAt = run.endedAt,
+					pane = run.pane,
 				})
 			end
 		end
@@ -847,6 +853,47 @@ local function create(env: Env): Runtime
 		end
 	end
 
+	-- What the run's pane showed when its program ended, as `launch.sh` saved it; nil when none was saved.
+	local function output(id: string, key: string): string?
+		local path = `{p.runs}/{runner.runName(id, key)}/output.txt`
+		local ok, text = pcall(function()
+			return if host.fs.exists(path) then host.fs.read(path, MAX_OUTPUT_BYTES) else nil
+		end)
+		if not ok or type(text) ~= "string" then
+			return nil
+		end
+		local valid, bad = utf8.len(text)
+		if not valid and bad then
+			text = string.sub(text, 1, bad - 1)
+		end
+		return (string.gsub(text, "%s+$", ""))
+	end
+
+	-- Shows the run's session, which stays open after a failure and while the run is live.
+	local function openSession(id: string, key: string, done: (boolean, string?) -> ())
+		local exe = env.ternExe
+		local target: Run? = nil
+		for _, run in runsOf(id) do
+			if run.key == key then
+				target = run
+			end
+		end
+		if not exe or not target or not target.pane then
+			done(false, "This run has no session to show.")
+			return
+		end
+		local failed = spawn({ exe, "focus", `{target.session}/{target.pane}` }, { timeout_ms = LAUNCH_TIMEOUT_MS }, function(result)
+			if result.status == 0 then
+				done(true, nil)
+			else
+				done(false, "That session is no longer open.")
+			end
+		end)
+		if failed then
+			done(false, "tern could not be started.")
+		end
+	end
+
 	return {
 		start = start,
 		snapshot = snapshot,
@@ -855,6 +902,8 @@ local function create(env: Env): Runtime
 		revision = revision,
 		runNow = runNow,
 		subscribe = subscribe,
+		output = output,
+		openSession = openSession,
 		-- Exposed for tests and the palette: one scheduler pass.
 		tick = tick,
 	}
