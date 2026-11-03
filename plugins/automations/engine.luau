@@ -37,7 +37,7 @@ export type Clock = {
 	mono: () -> number,
 }
 
-export type Env = { host: Host, paths: paths.Paths, clock: Clock, pluginDir: string }
+export type Env = { host: Host, paths: paths.Paths, clock: Clock, pluginDir: string, ternExe: string? }
 
 export type Run = {
 	key: string,
@@ -427,11 +427,16 @@ local function create(env: Env): Runtime
 			conclude(def.id, run, "launch_failed", "cannot write the run's prompt files", nil)
 			return
 		end
+		local exe = env.ternExe
+		if not exe then
+			conclude(def.id, run, "launch_failed", "cannot find the tern executable", nil)
+			return
+		end
 		local program = runner.agentArgv(def, p.home, promptFile, `{env.pluginDir}/launch.sh`)
 		if def.agent == "command" and ev then
 			program = runner.withEventFile(program, `{runDir}/event.json`)
 		end
-		local failed = spawn(runner.sessionArgv(run.session, cwd, program), { timeout_ms = LAUNCH_TIMEOUT_MS }, function(result)
+		local failed = spawn(runner.sessionArgv(exe, run.session, cwd, program), { timeout_ms = LAUNCH_TIMEOUT_MS }, function(result)
 			local block: unknown = nil
 			if result.status == 0 then
 				local ok, decoded = pcall(host.json.decode, result.stdout)

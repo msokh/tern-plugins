@@ -100,7 +100,7 @@ do
 	local queued = f.engine.runNow("legacy")
 	check("run now queues", queued)
 	local call = f.calls[1]
-	check("manual run skips the precheck", #f.calls == 1 and call.argv[1] == "tern" and call.argv[#call.argv] == "hi")
+	check("manual run skips the precheck", #f.calls == 1 and call.argv[1] == "/example/tern" and call.argv[#call.argv] == "hi")
 	check("run starts in its cwd with the command intact", call.argv[7] == "/example/work" and call.argv[#call.argv - 1] == "echo")
 	call.reply(support.ok('{"block":7}'))
 	check("launched is not completed", lastRun(f).phase == "launched")
@@ -120,6 +120,14 @@ do
 	check("a failed launch is reported without its output", lastRun(f).phase == "launch_failed" and not contains(tostring(lastRun(f).detail), "secret"))
 	check("refused and failed starts leave exactly the real runs", #f.engine.snapshot().runs == 3)
 	check("unknown automation is refused", not (f.engine.runNow("nope")))
+end
+
+do
+	local f = support.newFake("/x", nil, nil, nil, false)
+	f.files[f.paths.config] = LEGACY
+	f.engine.start()
+	f.engine.runNow("legacy")
+	check("a missing tern executable fails the launch with a reason and starts nothing", lastRun(f).phase == "launch_failed" and lastRun(f).detail == "cannot find the tern executable" and #f.calls == 0)
 end
 
 do
