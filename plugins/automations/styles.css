@@ -134,7 +134,7 @@ button.sf.sf-el.sf-act[data-role~='automations.tab'][data-mark='pick'] { color: 
 [data-role~='automations.runRow'] { min-height: 44px; border-bottom: 1px solid color-mix(in srgb, var(--t4) 18%, transparent); }
 [data-role~='automations.runRow']:last-child { border-bottom: 0; }
 [data-role~='automations.runCol.run'] { flex: 2 1 0; min-width: 0; gap: 2px; }
-[data-role~='automations.runCol.trigger'], [data-role~='automations.runCol.duration'], [data-role~='automations.runCol.result'] { flex: 1 1 0; min-width: 0; }
+[data-role~='automations.runCol.workspace'], [data-role~='automations.runCol.trigger'], [data-role~='automations.runCol.duration'], [data-role~='automations.runCol.result'] { flex: 1 1 0; min-width: 0; }
 [data-role~='automations.runRow'] { cursor: pointer; }
 [data-role~='automations.runRow']:hover { background: color-mix(in srgb, var(--t4) 7%, transparent); }
 [data-role~='automations.runsSummary'] { align-items: center; height: 44px; padding: 0 16px; border-bottom: 1px solid color-mix(in srgb, var(--t4) 25%, transparent); }
