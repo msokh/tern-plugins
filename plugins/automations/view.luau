@@ -200,7 +200,9 @@ local function runsTable(state: State, now: number, only: string?): Node
 	local runs = if only then Model.runsOf(state.snapshot.runs, only, RUNS_SHOWN) else state.snapshot.runs
 	local heads = {}
 	for _, column in RUN_COLUMNS do
-		table.insert(heads, text(column.id, column.head, `automations.th automations.runCol.{column.id}`))
+		if only == nil or column.id ~= "workspace" then
+			table.insert(heads, text(column.id, if only and column.id == "run" then "Started" else column.head, `automations.th automations.runCol.{column.id}`))
+		end
 	end
 	local out = {
 		ui.node("row", { key = "summary", role = "automations.runsSummary" }, {
@@ -213,23 +215,28 @@ local function runsTable(state: State, now: number, only: string?): Node
 		if index > RUNS_SHOWN then
 			break
 		end
+		local cells = {
+			ui.node("col", { key = "run", role = "automations.runCol.run" }, if only then {
+				text("when", Model.when(run.at, now), "automations.name"),
+			} else {
+				text("name", run.automationName, "automations.name"),
+				text("when", Model.when(run.at, now), "automations.secondary"),
+			}),
+		}
+		if only == nil then
+			table.insert(cells, text("workspace", workspaceOf(state, run), "automations.value automations.runCol.workspace"))
+		end
+		table.insert(cells, text("trigger", Model.triggerLabel(run.trigger), "automations.value automations.runCol.trigger"))
+		table.insert(cells, text("duration", Model.duration(run) or "-", "automations.value automations.runCol.duration"))
+		table.insert(cells, ui.node("col", { key = "result", role = "automations.runCol.result" }, {
+			outcomeLine("outcome", Model.outcome(run)),
+		}))
 		table.insert(out, ui.node("row", {
 			key = `run-{run.id}`,
 			role = "automations.runRow",
 			aria = `{run.automationName}, {Model.when(run.at, now)}`,
 			actions = { click = `open-run={run.id}` },
-		}, {
-			ui.node("col", { key = "run", role = "automations.runCol.run" }, {
-				text("name", run.automationName, "automations.name"),
-				text("when", Model.when(run.at, now), "automations.secondary"),
-			}),
-			text("workspace", workspaceOf(state, run), "automations.value automations.runCol.workspace"),
-			text("trigger", Model.triggerLabel(run.trigger), "automations.value automations.runCol.trigger"),
-			text("duration", Model.duration(run) or "-", "automations.value automations.runCol.duration"),
-			ui.node("col", { key = "result", role = "automations.runCol.result" }, {
-				outcomeLine("outcome", Model.outcome(run)),
-			}),
-		}))
+		}, cells))
 	end
 	if #runs == 0 then
 		table.insert(out, text("none", "No runs yet. Runs appear here after an automation starts.", "automations.emptyRow"))
@@ -303,7 +310,7 @@ local function runDetail(state: State, run: Model.Run, now: number): Node
 		}),
 		ui.node("col", { key = "body", role = "automations.runBody" }, body),
 	}))
-	return ui.node("col", { key = "page", role = "automations.page automations.editorPage automations.runPage" }, nodes)
+	return ui.node("col", { key = "page", role = "automations.page" }, nodes)
 end
 
 local function automationDetail(state: State, definition: Definition, now: number): Node
@@ -366,7 +373,7 @@ local function automationDetail(state: State, definition: Definition, now: numbe
 		table.insert(nodes, text("notice", state.notice, if state.noticeBad then "automations.error" else "automations.noticeText"))
 	end
 	table.insert(nodes, body)
-	return ui.node("col", { key = "page", role = "automations.page automations.editorPage" }, nodes)
+	return ui.node("col", { key = "page", role = "automations.page" }, nodes)
 end
 
 local function emptyState(): Node
@@ -566,7 +573,7 @@ local function editor(ctx: Ctx, state: State, draft: Draft): Node
 	if state.error then
 		table.insert(footer, 1, text("error", state.error, "automations.error", { grow = 1 }))
 	end
-	return ui.node("col", { key = "page", role = "automations.page automations.editorPage" }, {
+	return ui.node("col", { key = "page", role = "automations.page" }, {
 		ui.node("row", { key = "nav", role = "automations.nav" }, {
 			button("back", "← Automations", "cancel", "automations.backButton"),
 		}),
