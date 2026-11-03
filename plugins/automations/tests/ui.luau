@@ -199,6 +199,11 @@ local defs = { definition("a", {}), definition("b", { enabled = false, name = "W
 check("filter by status", #Model.visible(defs, "", "paused") == 1 and Model.visible(defs, "", "paused")[1].id == "b")
 check("search matches names case-insensitively", #Model.visible(defs, "DIGEST", "all") == 1)
 
+local long = string.rep("🧭a", 100) .. "\nsecond line"
+local summary = Model.summary(long)
+check("a long first line is cut on a character boundary", utf8.len(summary) == 141 and string.sub(summary, -3) == "…")
+check("the summary is the first non-blank line", Model.summary("\n\nlead\nnext") == "lead" and Model.summary("short") == "short")
+
 if failures > 0 then
 	error(`{failures} ui check(s) failed`)
 end

@@ -133,3 +133,10 @@ button.sf.sf-el.sf-act[data-role~='automations.tab'][data-mark='pick'] { color: 
 [data-role~='automations.runsPanel'] .sf-tbl-h, [data-role~='automations.runsPanel'] .sf-tbl-c { padding: 0 16px; }
 [data-role~='automations.runsPanel'] .sf-tbl-empty { padding: 20px 16px; color: var(--t3); }
 [data-role~='automations.runsPanel'] .sf-tbl-h { color: var(--t3); font-size: 11px; font-weight: 600; }
+div.sf[data-role~='automations.editor'] { overflow: hidden; }
+div.sf[data-role~='automations.editor'] .sf-ed-scroll { height: 100%; max-height: 100%; overflow-y: auto; }
+[data-role~='automations.description'] { max-height: 54px; overflow: hidden; overflow-wrap: anywhere; }
+div.sf[data-role~='automations.editor'] { height: 120px; }
+[data-role~='automations.formMain'], [data-role~='automations.formSettings'] { gap: 14px; padding: 16px 20px; }
+[data-role~='automations.formSection'] { padding-top: 14px; }
+[data-role~='automations.page'][data-role~='automations.editorPage'] { padding-top: 16px; padding-bottom: 24px; gap: 8px; }

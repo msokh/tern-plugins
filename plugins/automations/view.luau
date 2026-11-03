@@ -187,8 +187,8 @@ end
 local function inspector(ctx: Ctx, state: State, definition: Definition, now: number): Node
 	return box(ctx, "col", "side", "automations.side", nil, function(_)
 		local description = if definition.instructions ~= ""
-			then string.match(definition.instructions, "^%s*([^\n]*)") or ""
-			else table.concat(definition.command, " ")
+			then Model.summary(definition.instructions)
+			else Model.summary(table.concat(definition.command, " "))
 		local triggers = {}
 		for index, line in Model.triggerLines(definition) do
 			table.insert(triggers, text(`t{index}`, `{line.kind} · {line.detail}`, "automations.value"))
