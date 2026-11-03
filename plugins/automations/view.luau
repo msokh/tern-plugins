@@ -13,7 +13,6 @@ type State = Model.State
 local View = {}
 
 local RUNS_SHOWN = 100
-local RECENT_RUNS = 5
 
 local TONE_ROLE: { [Model.Tone]: string } = {
 	ok = "automations.resultOk",
@@ -184,81 +183,6 @@ local function meta(key: string, label: string, values: { Node }): Node
 	})
 end
 
-local function inspector(ctx: Ctx, state: State, definition: Definition, now: number): Node
-	return box(ctx, "col", "side", "automations.side", nil, function(_)
-		local isCommand = definition.instructions == ""
-		local full = if isCommand then table.concat(definition.command, " ") else definition.instructions
-		local clipped = Model.summary(full) ~= full
-		local triggers = {}
-		for index, line in Model.triggerLines(definition) do
-			table.insert(triggers, text(`t{index}`, `{line.kind} · {line.detail}`, "automations.value"))
-		end
-		local agent = Model.label(Model.AGENTS, definition.agent)
-		if definition.model ~= "" then
-			agent ..= ` · {definition.model}`
-		end
-		local next = Model.nextRun(definition, state.snapshot, now)
-		local run = lastRun(state, definition.id)
-		local runs = Model.runsOf(state.snapshot.runs, definition.id, RECENT_RUNS)
-		local recent = {}
-		for _, item in runs do
-			table.insert(recent, ui.node("row", {
-				key = `run-{item.key}`,
-				role = "automations.run",
-				aria = `{definition.name}, {Model.when(item.at, now)}`,
-				actions = { click = `open-run={item.id}` },
-			}, {
-				ui.node("col", { key = "what", role = "automations.runWhat" }, {
-					outcomeLine("result", Model.outcome(item)),
-					text("trigger", Model.triggerLabel(item.trigger), "automations.secondary"),
-				}),
-				text("when", Model.when(item.at, now), "automations.time"),
-			}))
-		end
-		if #runs == 0 then
-			table.insert(recent, text("none", "No runs yet.", "automations.secondary"))
-		end
-		local prompt = {
-			ui.node("row", { key = "head", role = "automations.sectionTitle" }, {
-				text("title", if isCommand then "Command" else "Instructions", "automations.h3"),
-				if clipped then button("more", if state.promptOpen then "Show less" else "Show more", "toggle-prompt", "automations.linkButton") else text("none", "", "automations.note"),
-			}),
-			text("description", if state.promptOpen then full else Model.summary(full), if state.promptOpen then "automations.description automations.descriptionOpen" else "automations.description"),
-		}
-		return {
-			ui.node("col", { key = "intro", role = "automations.section" }, {
-				text("kicker", "AUTOMATION", "automations.kicker"),
-				ui.node("row", { key = "head", role = "automations.sideHead" }, {
-					text("name", definition.name, "automations.sideTitle", { grow = 1 }),
-					statusPill(definition),
-				}),
-			}),
-			ui.node("col", { key = "details", role = "automations.section" }, {
-				meta("trigger", if #triggers > 1 then "Triggers" else "Trigger", triggers),
-				meta("workspace", "Workspace", { text("v", Model.workspaceLabel(definition.workspace), "automations.value") }),
-				meta("agent", "Agent", { text("v", agent, "automations.value") }),
-				meta("next", "Next run", { text("v", next, "automations.value") }),
-				meta("last", "Last run", {
-					text("v", if run then `{Model.outcome(run).label}, {Model.ago(run.at, now)}` else "Never", "automations.value"),
-				}),
-				ui.node("row", { key = "actions", role = "automations.actions" }, {
-					button("run", "Run now", "run", "automations.primaryButton"),
-					button("edit", "Edit", "edit", "automations.button"),
-					button("toggle", if definition.enabled then "Pause" else "Enable", "toggle", "automations.button"),
-				}),
-			}),
-			ui.node("col", { key = "prompt", role = "automations.section" }, prompt),
-			ui.node("col", { key = "recent", role = "automations.section" }, {
-				ui.node("row", { key = "head", role = "automations.sectionTitle" }, {
-					text("title", "Recent runs", "automations.h3"),
-					text("count", `{#runs} shown`, "automations.note"),
-				}),
-				ui.node("col", { key = "items", role = "automations.runList" }, recent),
-			}),
-		}
-	end)
-end
-
 local RUN_COLUMNS = {
 	{ id = "run", head = "Run" },
 	{ id = "workspace", head = "Workspace" },
@@ -272,8 +196,8 @@ local function workspaceOf(state: State, run: Model.Run): string
 	return if definition then Model.workspaceLabel(definition.workspace) else "-"
 end
 
-local function runsTable(state: State, now: number): Node
-	local runs = state.snapshot.runs
+local function runsTable(state: State, now: number, only: string?): Node
+	local runs = if only then Model.runsOf(state.snapshot.runs, only, RUNS_SHOWN) else state.snapshot.runs
 	local heads = {}
 	for _, column in RUN_COLUMNS do
 		table.insert(heads, text(column.id, column.head, `automations.th automations.runCol.{column.id}`))
@@ -356,7 +280,7 @@ local function runDetail(state: State, run: Model.Run, now: number): Node
 	}))
 	local nodes = {
 		ui.node("row", { key = "nav", role = "automations.nav" }, {
-			button("back", "← Automations", "back", "automations.backButton"),
+			button("back", if state.backTo == "detail" then `← {run.automationName}` else "← Runs", "back", "automations.backButton"),
 		}),
 		ui.node("row", { key = "head", role = "automations.head" }, {
 			ui.node("col", { key = "titles", role = "automations.titles", grow = 1 }, {
@@ -380,6 +304,69 @@ local function runDetail(state: State, run: Model.Run, now: number): Node
 		ui.node("col", { key = "body", role = "automations.runBody" }, body),
 	}))
 	return ui.node("col", { key = "page", role = "automations.page automations.editorPage automations.runPage" }, nodes)
+end
+
+local function automationDetail(state: State, definition: Definition, now: number): Node
+	local isCommand = definition.instructions == ""
+	local full = if isCommand then table.concat(definition.command, " ") else definition.instructions
+	local clipped = Model.summary(full) ~= full
+	local triggers = {}
+	for index, line in Model.triggerLines(definition) do
+		table.insert(triggers, text(`t{index}`, `{line.kind} · {line.detail}`, "automations.value"))
+	end
+	local agent = Model.label(Model.AGENTS, definition.agent)
+	if definition.model ~= "" then
+		agent ..= ` · {definition.model}`
+	end
+	local run = lastRun(state, definition.id)
+	local body: Node
+	if state.detailTab == "runs" then
+		body = runsTable(state, now, definition.id)
+	else
+		body = ui.node("col", { key = "card", role = "automations.formCard" }, {
+			ui.node("col", { key = "details", role = "automations.section" }, {
+				meta("trigger", if #triggers > 1 then "Triggers" else "Trigger", triggers),
+				meta("workspace", "Workspace", { text("v", Model.workspaceLabel(definition.workspace), "automations.value") }),
+				meta("agent", "Agent", { text("v", agent, "automations.value") }),
+				meta("next", "Next run", { text("v", Model.nextRun(definition, state.snapshot, now), "automations.value") }),
+				meta("last", "Last run", {
+					text("v", if run then `{Model.outcome(run).label}, {Model.ago(run.at, now)}` else "Never", "automations.value"),
+				}),
+			}),
+			ui.node("col", { key = "prompt", role = "automations.section" }, {
+				ui.node("row", { key = "head", role = "automations.sectionTitle" }, {
+					text("title", if isCommand then "Command" else "Instructions", "automations.h3"),
+					if clipped then button("more", if state.promptOpen then "Show less" else "Show more", "toggle-prompt", "automations.linkButton") else text("none", "", "automations.note"),
+				}),
+				text("description", if state.promptOpen then full else Model.summary(full), if state.promptOpen then "automations.description automations.descriptionOpen" else "automations.description"),
+			}),
+		})
+	end
+	local nodes = {
+		ui.node("row", { key = "nav", role = "automations.nav" }, {
+			button("back", "← Automations", "back", "automations.backButton"),
+		}),
+		ui.node("row", { key = "head", role = "automations.head" }, {
+			ui.node("row", { key = "titles", role = "automations.titleLine", grow = 1 }, {
+				text("title", definition.name, "automations.title"),
+				statusPill(definition),
+			}),
+			ui.node("row", { key = "actions", role = "automations.actions" }, {
+				button("run", "Run now", "run", "automations.primaryButton"),
+				button("edit", "Edit", "edit", "automations.button"),
+				button("toggle", if definition.enabled then "Pause" else "Enable", "toggle", "automations.button"),
+			}),
+		}),
+		ui.node("row", { key = "tabs", role = "automations.tabs" }, {
+			button("t-overview", "Overview", "detail-tab=overview", "automations.tab", state.detailTab == "overview"),
+			button("t-runs", "Runs", "detail-tab=runs", "automations.tab", state.detailTab == "runs"),
+		}),
+	}
+	if state.notice then
+		table.insert(nodes, text("notice", state.notice, if state.noticeBad then "automations.error" else "automations.noticeText"))
+	end
+	table.insert(nodes, body)
+	return ui.node("col", { key = "page", role = "automations.page automations.editorPage" }, nodes)
 end
 
 local function emptyState(): Node
@@ -439,12 +426,7 @@ local function overview(ctx: Ctx, state: State, now: number): Node
 				text("health", Model.healthLabel(snapshot.health), "automations.note"),
 			}
 		end))
-		local selected = Model.find(shown, state.selected)
-		local parts = { tableList(ctx, state, shown, now) }
-		if selected then
-			table.insert(parts, inspector(ctx, state, selected, now))
-		end
-		table.insert(children, ui.node("row", { key = "layout", role = "automations.layout" }, parts))
+		table.insert(children, ui.node("row", { key = "layout", role = "automations.layout" }, { tableList(ctx, state, shown, now) }))
 	end
 	return ui.node("col", { key = "page", role = "automations.page" }, children)
 end
@@ -611,6 +593,10 @@ function View.render(state: State, now: number): BlockView
 	local run = if state.mode == "run" then Model.findRun(state.snapshot.runs, state.runId) else nil
 	if run then
 		return { main = runDetail(state, run, now) }
+	end
+	local definition = if state.mode == "detail" then Model.find(state.snapshot.definitions, state.selected) else nil
+	if definition then
+		return { main = automationDetail(state, definition, now) }
 	end
 	return { main = overview(root, state, now) }
 end

@@ -59,7 +59,6 @@ button.sf.sf-el.sf-act[data-role~='automations.tab'][data-mark='pick'] { color: 
 
 [data-role~='automations.layout'] { align-items: stretch; flex-wrap: wrap; border: 1px solid color-mix(in srgb, var(--t4) 30%, transparent); border-radius: 10px; overflow: hidden; }
 [data-role~='automations.list'] { flex: 1 1 640px; min-width: 0; justify-content: flex-start; }
-[data-role~='automations.side'] { flex: 1 1 336px; min-width: 0; border-left: 1px solid color-mix(in srgb, var(--t4) 30%, transparent); background: color-mix(in srgb, var(--t4) 5%, transparent); }
 [data-role~='automations.tableHead'], [data-role~='automations.row'] { align-items: center; gap: 16px; padding: 0 16px; }
 [data-role~='automations.tableHead'] { height: 32px; color: var(--t3); font-size: 11px; font-weight: 600; border-bottom: 1px solid color-mix(in srgb, var(--t4) 25%, transparent); }
 [data-role~='automations.row'] { min-height: 56px; cursor: pointer; border-bottom: 1px solid color-mix(in srgb, var(--t4) 18%, transparent); }
@@ -88,18 +87,11 @@ button.sf.sf-el.sf-act[data-role~='automations.tab'][data-mark='pick'] { color: 
 [data-role~='automations.resultMuted'] { color: var(--t3); }
 
 [data-role~='automations.section'] { padding: 16px; gap: 10px; border-bottom: 1px solid color-mix(in srgb, var(--t4) 25%, transparent); }
-[data-role~='automations.sideHead'] { align-items: center; gap: 8px; }
-[data-role~='automations.sideTitle'] { font-size: 15px; line-height: 22px; font-weight: 650; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 [data-role~='automations.description'] { color: var(--t3); font-size: 12px; line-height: 18px; }
 [data-role~='automations.metaRow'] { gap: 12px; font-size: 12px; line-height: 18px; }
 [data-role~='automations.metaLabel'] { flex: 0 0 84px; color: var(--t3); }
 [data-role~='automations.metaValue'] { flex: 1 1 0; min-width: 0; gap: 2px; }
-[data-role~='automations.details'] [data-role~='automations.actions'] { margin-top: 8px; }
 [data-role~='automations.sectionTitle'] { justify-content: space-between; align-items: center; }
-[data-role~='automations.runList'] { gap: 0; }
-[data-role~='automations.run'] { justify-content: space-between; align-items: flex-start; gap: 12px; padding: 8px 0; border-bottom: 1px solid color-mix(in srgb, var(--t4) 20%, transparent); font-size: 12px; }
-[data-role~='automations.runWhat'] { gap: 2px; min-width: 0; }
-[data-role~='automations.time'] { color: var(--t3); font-size: 11px; white-space: nowrap; }
 [data-role~='automations.runsPanel'] { margin-top: 4px; border: 1px solid color-mix(in srgb, var(--t4) 30%, transparent); border-radius: 10px; overflow: hidden; }
 [data-role~='automations.empty'] { padding: 40px 24px; gap: 10px; align-items: flex-start; border: 1px solid color-mix(in srgb, var(--t4) 30%, transparent); border-radius: 10px; }
 [data-role~='automations.emptyTitle'] { font-size: 15px; font-weight: 650; }
@@ -138,8 +130,6 @@ button.sf.sf-el.sf-act[data-role~='automations.tab'][data-mark='pick'] { color: 
 [data-role~='automations.runRow'] { cursor: pointer; }
 [data-role~='automations.runRow']:hover { background: color-mix(in srgb, var(--t4) 7%, transparent); }
 [data-role~='automations.runsSummary'] { align-items: center; height: 44px; padding: 0 16px; border-bottom: 1px solid color-mix(in srgb, var(--t4) 25%, transparent); }
-[data-role~='automations.run'] { cursor: pointer; border-radius: 6px; }
-[data-role~='automations.run']:hover { background: color-mix(in srgb, var(--t4) 9%, transparent); }
 button.sf.sf-el.sf-act[data-role~='automations.linkButton'] { height: 22px; padding: 0 4px; border: 0; background: transparent; color: var(--accent); font: inherit; font-size: 11px; box-shadow: none; outline: none; cursor: pointer; }
 button.sf.sf-el.sf-act[data-role~='automations.linkButton']:hover { color: var(--t1); background: transparent; }
 [data-role~='automations.descriptionOpen'] { max-height: 240px; overflow-y: auto; white-space: pre-wrap; }

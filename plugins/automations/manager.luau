@@ -24,6 +24,8 @@ local function newState(saved: unknown, args: { string }): State
 	local selected = pref(saved, "selected")
 	return {
 		mode = "overview",
+		backTo = "overview",
+		detailTab = "overview",
 		tab = tab,
 		filter = if filter == "enabled" or filter == "paused" then filter else "all",
 		selected = if type(selected) == "string" then selected else nil,
@@ -63,11 +65,17 @@ local function refresh(state: State, runtime: Runtime)
 	end
 	if Model.find(snapshot.definitions, state.selected) == nil then
 		state.selected = if snapshot.definitions[1] then snapshot.definitions[1].id else nil
+		if state.mode == "detail" then
+			state.mode = "overview"
+		end
+		if state.backTo == "detail" then
+			state.backTo = "overview"
+		end
 	end
 	if state.mode == "run" then
 		local run = Model.findRun(snapshot.runs, state.runId)
 		if run == nil then
-			state.mode, state.runId, state.output = "overview", nil, nil
+			state.mode, state.runId, state.output = state.backTo, nil, nil
 		else
 			state.output = runtime.output(run.automationId, run.key)
 		end
@@ -115,14 +123,18 @@ local function focusField(state: State, cx: BlockCx, key: string?)
 end
 
 local function openEditor(state: State, cx: BlockCx, draft: Model.Draft, baseline: Model.Draft)
-	state.mode, state.draft, state.baseline = "editor", draft, baseline
+	state.backTo, state.mode, state.draft, state.baseline = state.mode, "editor", draft, baseline
 	state.error, state.notice, state.discardArmed = nil, nil, false
 	focusField(state, cx, "name")
 end
 
 local function leaveEditor(state: State)
-	state.mode, state.draft, state.baseline = "overview", nil, nil
+	state.mode, state.draft, state.baseline = state.backTo, nil, nil
 	state.error, state.discardArmed, state.focus = nil, false, nil
+end
+
+local function openDetail(state: State, id: string)
+	state.selected, state.mode, state.detailTab, state.promptOpen = id, "detail", "overview", false
 end
 
 local function editSelected(state: State, cx: BlockCx, runtime: Runtime)
@@ -259,7 +271,7 @@ local function editorAction(state: State, cx: BlockCx, draft: Model.Draft, act: 
 end
 
 local function leaveRun(state: State)
-	state.mode, state.runId, state.output = "overview", nil, nil
+	state.mode, state.runId, state.output = state.backTo, nil, nil
 end
 
 local function openSession(state: State, cx: BlockCx, runtime: Runtime)
@@ -302,10 +314,16 @@ local function onAction(state: State, ev: UiEvent, cx: BlockCx, runtime: Runtime
 	end
 	state.notice = nil
 	if act == "open-run" and Model.findRun(state.snapshot.runs, value) ~= nil then
-		state.mode, state.runId, state.stale = "run", value, true
+		state.backTo, state.mode, state.runId, state.stale = state.mode, "run", value, true
 		return
 	elseif act == "toggle-prompt" then
 		state.promptOpen = not state.promptOpen
+		return
+	elseif state.mode == "detail" and act == "back" then
+		state.mode = "overview"
+		return
+	elseif state.mode == "detail" and act == "detail-tab" and (value == "overview" or value == "runs") then
+		state.detailTab = value
 		return
 	end
 	if act == "new" then
@@ -317,7 +335,7 @@ local function onAction(state: State, ev: UiEvent, cx: BlockCx, runtime: Runtime
 	elseif act == "toggle" then
 		toggleSelected(state, runtime)
 	elseif act == "select" and Model.find(state.snapshot.definitions, value) ~= nil then
-		state.selected = value
+		openDetail(state, value)
 	elseif act == "tab" and (value == "automations" or value == "runs") then
 		state.tab = value
 	elseif act == "filter" and (value == "all" or value == "enabled" or value == "paused") then
@@ -421,8 +439,15 @@ local function overviewKey(state: State, key: Key, cx: BlockCx): boolean
 			state.focus = nil
 			keepSelectionVisible(state)
 			return true
-		elseif name == "up" or name == "down" or name == "enter" then
-			moveSelection(state, if name == "up" then -1 elseif name == "down" then 1 else 0)
+		elseif name == "up" or name == "down" then
+			moveSelection(state, if name == "up" then -1 else 1)
+			return true
+		elseif name == "enter" then
+			local target = state.selected
+			state.focus = nil
+			if target ~= nil then
+				openDetail(state, target)
+			end
 			return true
 		end
 		local handled = Input.key(state.search, key)
@@ -435,6 +460,9 @@ local function overviewKey(state: State, key: Key, cx: BlockCx): boolean
 	end
 	if state.tab == "automations" and (name == "up" or name == "down") then
 		moveSelection(state, if name == "up" then -1 else 1)
+		return true
+	elseif state.tab == "automations" and name == "enter" and state.selected ~= nil then
+		openDetail(state, state.selected)
 		return true
 	elseif state.tab == "automations" and key.text == "/" and not (key.ctrl or key.meta) then
 		focusField(state, cx, "search")
@@ -484,9 +512,13 @@ function Manager.register(runtime: Runtime)
 		key = function(state: State, key: Key, cx: BlockCx): boolean?
 			if state.mode == "editor" then
 				return editorKey(state, key, cx, runtime)
-			elseif state.mode == "run" then
+			elseif state.mode == "run" or state.mode == "detail" then
 				if key.name == "escape" or key.name == "esc" then
-					leaveRun(state)
+					if state.mode == "run" then
+						leaveRun(state)
+					else
+						state.mode = "overview"
+					end
 					return true
 				end
 				return false
