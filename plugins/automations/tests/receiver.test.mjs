@@ -87,13 +87,21 @@ test("a short or missing token refuses to start", () => {
 	assert.throws(() => createReceiver({ token: "short", stateDir: dir }));
 });
 
-test("launch.sh feeds the prompt file on stdin and keeps arguments intact", () => {
+test("launch.sh feeds the prompt file on stdin, keeps arguments intact and saves the pane's output", () => {
 	const script = join(dirname(fileURLToPath(import.meta.url)), "..", "launch.sh");
 	const prompt = join(dir, "prompt.md");
+	const output = join(dir, "output.txt");
+	const fakeTern = join(dir, "fake-tern");
 	writeFileSync(prompt, "line one\n$(not run) `not run`\n");
-	const out = spawnSync("sh", [script, prompt, "sh", "-c", 'cat; printf "%s|" "$@"', "arg0", "a b", "$HOME"], { encoding: "utf8" });
-	assert.equal(out.status, 0);
+	writeFileSync(fakeTern, '#!/bin/sh\necho "$*"\n', { mode: 0o755 });
+	const env = { ...process.env, TERN_EXE: fakeTern, TERN_PANE: "7" };
+	const out = spawnSync("sh", [script, output, prompt, "sh", "-c", 'cat; printf "%s|" "$@"; exit 3', "arg0", "a b", "$HOME"], { encoding: "utf8", env });
+	assert.equal(out.status, 3);
 	assert.equal(out.stdout, "line one\n$(not run) `not run`\na b|$HOME|");
+	assert.equal(readFileSync(output, "utf8"), "capture 7 --scrollback\n");
+	const bare = spawnSync("sh", [script, output, "-", "sh", "-c", "echo hi; cat"], { encoding: "utf8", env, input: "" });
+	assert.equal(bare.status, 0);
+	assert.equal(bare.stdout, "hi\n");
 });
 
 test("the receiver CLI accepts events through a symlinked plugin directory", { timeout: 5000 }, async (t) => {

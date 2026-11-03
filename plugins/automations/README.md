@@ -27,6 +27,8 @@ Undo restores the text, caret, and selection from before an edit.
 
 A successful program closes its session. A nonzero exit keeps the session open. The manager records the program's exit, not just a successful launch.
 
+Every program runs through `launch.sh`, which saves what the pane showed (last 2000 lines) to `output.txt` in the run's state directory before the session can close. Click a run in the Runs tab or in an automation's recent runs to read it on the run details page. A failed or live run also offers `Open session`.
+
 The agent uses its existing CLI permissions and credentials. The plugin does not grant permissions or add approval-bypass flags. The selected CLI must be on Tern's `PATH`.
 
 The scheduler starts each run's session through the `tern` executable at `$TERN_EXE`, `~/.local/bin/tern`, `/Applications/Tern.app/Contents/MacOS/tern`, `/opt/homebrew/bin/tern` or `/usr/local/bin/tern`, whichever exists first. A run fails with "cannot find the tern executable" when none does.

@@ -12,33 +12,40 @@ local function runName(id: string, key: string): string
 	return `{id}-{key}`
 end
 
--- The program a prompt agent runs. The prompt is a file in the state directory: omp reads it as
--- `@file`; claude and codex read their prompt from stdin, which `launch.sh` points at the file.
--- No approval or sandbox flags are added: each agent runs with its own configured permissions.
-local function agentArgv(def: config.Definition, home: string, promptFile: string, launchScript: string): { string }
+-- The program a prompt agent runs, and whether the prompt file is its stdin. The prompt is a file in
+-- the state directory: omp reads it as `@file`; claude and codex read their prompt from stdin, which
+-- `launch.sh` points at the file. No approval or sandbox flags are added: each agent runs with its
+-- own configured permissions.
+local function agentProgram(def: config.Definition, home: string, promptFile: string): ({ string }, boolean)
 	if def.agent == "command" then
-		return config.expandAll(def.command, home)
+		return config.expandAll(def.command, home), false
 	end
 	local out: { string } = {}
+	local stdin = true
 	if def.agent == "omp" then
 		out = { "omp", "-p", `@{promptFile}` }
-		if def.model ~= "" then
-			table.insert(out, "--model")
-			table.insert(out, def.model)
-		end
+		stdin = false
 	elseif def.agent == "claude" then
-		out = { "sh", launchScript, promptFile, "claude", "-p" }
-		if def.model ~= "" then
-			table.insert(out, "--model")
-			table.insert(out, def.model)
-		end
+		out = { "claude", "-p" }
 	else
-		out = { "sh", launchScript, promptFile, "codex", "exec" }
-		if def.model ~= "" then
-			table.insert(out, "--model")
-			table.insert(out, def.model)
-		end
+		out = { "codex", "exec" }
+	end
+	if def.model ~= "" then
+		table.insert(out, "--model")
+		table.insert(out, def.model)
+	end
+	if def.agent == "codex" then
 		table.insert(out, "-")
+	end
+	return out, stdin
+end
+
+-- Every program runs through `launch.sh`, which saves what the pane showed to `outputFile` before
+-- the session can end on success.
+local function launchArgv(launchScript: string, outputFile: string, stdinFile: string?, program: { string }): { string }
+	local out = { "sh", launchScript, outputFile, stdinFile or "-" }
+	for _, arg in program do
+		table.insert(out, arg)
 	end
 	return out
 end
@@ -97,7 +104,8 @@ end
 return {
 	sessionName = sessionName,
 	runName = runName,
-	agentArgv = agentArgv,
+	agentProgram = agentProgram,
+	launchArgv = launchArgv,
 	withEventFile = withEventFile,
 	promptText = promptText,
 	sessionArgv = sessionArgv,

@@ -133,8 +133,21 @@ button.sf.sf-el.sf-act[data-role~='automations.tab'][data-mark='pick'] { color: 
 [data-role~='automations.runsPanel'] [data-role~='automations.tableHead'], [data-role~='automations.runRow'] { align-items: center; gap: 16px; padding: 0 16px; }
 [data-role~='automations.runRow'] { min-height: 44px; border-bottom: 1px solid color-mix(in srgb, var(--t4) 18%, transparent); }
 [data-role~='automations.runRow']:last-child { border-bottom: 0; }
-[data-role~='automations.runCol.automation'] { flex: 2 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-[data-role~='automations.runCol.started'], [data-role~='automations.runCol.trigger'], [data-role~='automations.runCol.result'] { flex: 1 1 0; min-width: 0; }
+[data-role~='automations.runCol.run'] { flex: 2 1 0; min-width: 0; gap: 2px; }
+[data-role~='automations.runCol.trigger'], [data-role~='automations.runCol.duration'], [data-role~='automations.runCol.result'] { flex: 1 1 0; min-width: 0; }
+[data-role~='automations.runRow'] { cursor: pointer; }
+[data-role~='automations.runRow']:hover { background: color-mix(in srgb, var(--t4) 7%, transparent); }
+[data-role~='automations.runsSummary'] { align-items: center; height: 44px; padding: 0 16px; border-bottom: 1px solid color-mix(in srgb, var(--t4) 25%, transparent); }
+[data-role~='automations.run'] { cursor: pointer; border-radius: 6px; }
+[data-role~='automations.run']:hover { background: color-mix(in srgb, var(--t4) 9%, transparent); }
+button.sf.sf-el.sf-act[data-role~='automations.linkButton'] { height: 22px; padding: 0 4px; border: 0; background: transparent; color: var(--accent); font: inherit; font-size: 11px; box-shadow: none; outline: none; cursor: pointer; }
+button.sf.sf-el.sf-act[data-role~='automations.linkButton']:hover { color: var(--t1); background: transparent; }
+[data-role~='automations.descriptionOpen'] { max-height: 240px; overflow-y: auto; white-space: pre-wrap; }
+[data-role~='automations.runMeta'] { flex-wrap: wrap; gap: 24px; padding: 14px 20px; border-bottom: 1px solid color-mix(in srgb, var(--t4) 25%, transparent); background: color-mix(in srgb, var(--t4) 5%, transparent); }
+[data-role~='automations.metaCell'] { gap: 4px; min-width: 0; }
+[data-role~='automations.runBody'] { gap: 16px; padding: 20px; }
+[data-role~='automations.output'] { gap: 10px; min-width: 0; }
+[data-role~='automations.outputText'] { min-width: 0; overflow-wrap: anywhere; font-size: 13px; line-height: 22px; }
 div.sf[data-role~='automations.editor'] { overflow: hidden; }
 div.sf[data-role~='automations.editor'] .sf-ed-scroll { height: 100%; max-height: 100%; overflow-y: auto; }
 [data-role~='automations.description'] { max-height: 54px; overflow: hidden; overflow-wrap: anywhere; }

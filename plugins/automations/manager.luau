@@ -27,6 +27,9 @@ local function newState(saved: unknown, args: { string }): State
 		tab = tab,
 		filter = if filter == "enabled" or filter == "paused" then filter else "all",
 		selected = if type(selected) == "string" then selected else nil,
+		runId = nil,
+		promptOpen = false,
+		output = nil,
 		search = Input.new(""),
 		draft = nil,
 		focus = nil,
@@ -60,6 +63,14 @@ local function refresh(state: State, runtime: Runtime)
 	end
 	if Model.find(snapshot.definitions, state.selected) == nil then
 		state.selected = if snapshot.definitions[1] then snapshot.definitions[1].id else nil
+	end
+	if state.mode == "run" then
+		local run = Model.findRun(snapshot.runs, state.runId)
+		if run == nil then
+			state.mode, state.runId, state.output = "overview", nil, nil
+		else
+			state.output = runtime.output(run.automationId, run.key)
+		end
 	end
 end
 
@@ -247,9 +258,37 @@ local function editorAction(state: State, cx: BlockCx, draft: Model.Draft, act: 
 	end
 end
 
+local function leaveRun(state: State)
+	state.mode, state.runId, state.output = "overview", nil, nil
+end
+
+local function openSession(state: State, cx: BlockCx, runtime: Runtime)
+	local run = Model.findRun(state.snapshot.runs, state.runId)
+	if run == nil then
+		return
+	end
+	runtime.openSession(run.automationId, run.key, function(ok, message)
+		if not ok then
+			say(state, message or "Could not show this session.", true)
+		end
+		pcall(function()
+			cx:render()
+		end)
+	end)
+end
+
 local function onAction(state: State, ev: UiEvent, cx: BlockCx, runtime: Runtime)
 	local act = if type(ev.act) == "string" then ev.act else ""
 	local value = if type(ev.value) == "string" then ev.value else ""
+	if state.mode == "run" then
+		state.notice = nil
+		if act == "back" then
+			leaveRun(state)
+		elseif act == "open-session" then
+			openSession(state, cx, runtime)
+		end
+		return
+	end
 	if state.mode == "editor" then
 		local draft = state.draft
 		if act == "save" then
@@ -262,6 +301,13 @@ local function onAction(state: State, ev: UiEvent, cx: BlockCx, runtime: Runtime
 		return
 	end
 	state.notice = nil
+	if act == "open-run" and Model.findRun(state.snapshot.runs, value) ~= nil then
+		state.mode, state.runId, state.stale = "run", value, true
+		return
+	elseif act == "toggle-prompt" then
+		state.promptOpen = not state.promptOpen
+		return
+	end
 	if act == "new" then
 		openEditor(state, cx, Model.newDraft(), Model.newDraft())
 	elseif act == "edit" then
@@ -438,6 +484,12 @@ function Manager.register(runtime: Runtime)
 		key = function(state: State, key: Key, cx: BlockCx): boolean?
 			if state.mode == "editor" then
 				return editorKey(state, key, cx, runtime)
+			elseif state.mode == "run" then
+				if key.name == "escape" or key.name == "esc" then
+					leaveRun(state)
+					return true
+				end
+				return false
 			end
 			return overviewKey(state, key, cx)
 		end,
