@@ -261,10 +261,16 @@ end
 
 local RUN_COLUMNS = {
 	{ id = "run", head = "Run" },
+	{ id = "workspace", head = "Workspace" },
 	{ id = "trigger", head = "Trigger" },
 	{ id = "duration", head = "Duration" },
 	{ id = "result", head = "Result" },
 }
+
+local function workspaceOf(state: State, run: Model.Run): string
+	local definition = Model.find(state.snapshot.definitions, run.automationId)
+	return if definition then Model.workspaceLabel(definition.workspace) else "-"
+end
 
 local function runsTable(state: State, now: number): Node
 	local runs = state.snapshot.runs
@@ -293,6 +299,7 @@ local function runsTable(state: State, now: number): Node
 				text("name", run.automationName, "automations.name"),
 				text("when", Model.when(run.at, now), "automations.secondary"),
 			}),
+			text("workspace", workspaceOf(state, run), "automations.value automations.runCol.workspace"),
 			text("trigger", Model.triggerLabel(run.trigger), "automations.value automations.runCol.trigger"),
 			text("duration", Model.duration(run) or "-", "automations.value automations.runCol.duration"),
 			ui.node("col", { key = "result", role = "automations.runCol.result" }, {
