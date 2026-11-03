@@ -247,32 +247,37 @@ local function inspector(ctx: Ctx, state: State, definition: Definition, now: nu
 	end)
 end
 
+local RUN_COLUMNS = {
+	{ id = "automation", head = "Automation" },
+	{ id = "started", head = "Started" },
+	{ id = "trigger", head = "Trigger" },
+	{ id = "result", head = "Result" },
+}
+
 local function runsTable(state: State, now: number): Node
-	local rows = {}
-	for index, run in state.snapshot.runs do
+	local heads = {}
+	for _, column in RUN_COLUMNS do
+		table.insert(heads, text(column.id, column.head, `automations.th automations.runCol.{column.id}`))
+	end
+	local out = { ui.node("row", { key = "head", role = "automations.tableHead" }, heads) }
+	local runs = state.snapshot.runs
+	for index, run in runs do
 		if index > RUNS_SHOWN then
 			break
 		end
-		local outcome = Model.outcome(run)
-		table.insert(rows, {
-			id = run.id,
-			cells = {
-				run.automationName,
-				Model.when(run.at, now),
-				Model.triggerLabel(run.trigger),
-				{ text = outcome.label, dot = TABLE_DOT[outcome.tone], title = run.detail },
-			},
-		})
+		table.insert(out, ui.node("row", { key = `run-{run.id}`, role = "automations.runRow" }, {
+			text("automation", run.automationName, "automations.name automations.runCol.automation"),
+			text("started", Model.when(run.at, now), "automations.value automations.runCol.started"),
+			text("trigger", Model.triggerLabel(run.trigger), "automations.value automations.runCol.trigger"),
+			ui.node("col", { key = "result", role = "automations.runCol.result", title = run.detail }, {
+				outcomeLine("outcome", Model.outcome(run)),
+			}),
+		}))
 	end
-	local cols = {
-		{ id = "automation", head = "Automation", grow = 2 },
-		{ id = "started", head = "Started", grow = 1 },
-		{ id = "trigger", head = "Trigger", grow = 1, priority = 1 },
-		{ id = "result", head = "Result", grow = 1 },
-	}
-	return ui.node("col", { key = "runs", role = "automations.runsPanel" }, {
-		ui.table(cols, rows, { empty = "No runs yet. Runs appear here after an automation starts." }),
-	})
+	if #runs == 0 then
+		table.insert(out, text("none", "No runs yet. Runs appear here after an automation starts.", "automations.emptyRow"))
+	end
+	return ui.node("col", { key = "runs", role = "automations.runsPanel" }, out)
 end
 
 local function emptyState(): Node
