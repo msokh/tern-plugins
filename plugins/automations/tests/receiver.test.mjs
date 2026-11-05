@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
@@ -136,4 +136,27 @@ test("the receiver CLI accepts events through a symlinked plugin directory", { t
 	const inbox = join(home, "state", "events", "inbox");
 	const stored = readdirSync(inbox).filter((name) => !name.startsWith("."));
 	assert.equal(JSON.parse(readFileSync(join(inbox, stored[0]), "utf8")).id, "cli-delivery");
+});
+
+test("concurrent deliveries cannot overfill the inbox", async () => {
+	const crowded = mkdtempSync(join(tmpdir(), "automations-receiver-full-"));
+	const full = createReceiver({ token: TOKEN, stateDir: crowded, now: () => 1_800_000_000_000 });
+	const address = await full.listen(0);
+	try {
+		mkdirSync(full.inbox, { recursive: true });
+		for (let i = 0; i < 999; i += 1) writeFileSync(join(full.inbox, `filler-${i}.json`), "{}");
+		const url = `http://127.0.0.1:${address.port}/events`;
+		const send = (id) =>
+			fetch(url, {
+				method: "POST",
+				headers: { "content-type": "application/json", authorization: `Bearer ${TOKEN}` },
+				body: JSON.stringify(event(id)),
+			});
+		const statuses = (await Promise.all([send("c1"), send("c2")])).map((res) => res.status).sort();
+		assert.deepEqual(statuses, [202, 503]);
+		assert.equal(readdirSync(full.inbox).length, 1000);
+	} finally {
+		await full.close();
+		rmSync(crowded, { recursive: true, force: true });
+	}
 });

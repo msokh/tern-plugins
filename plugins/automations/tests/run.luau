@@ -31,6 +31,8 @@ check("weekday range excludes Saturday", not schedule.matches(cron("35 9 * * 1-5
 check("7 means Sunday", schedule.matches(cron("35 9 * * 7"), utc(SAT_0935 + 86400)))
 check("restricted day fields OR together", schedule.matches(cron("35 9 1 * 6"), utc(SAT_0935)))
 check("day-of-month alone must match", not schedule.matches(cron("35 9 1 * *"), utc(SAT_0935)))
+check("a starred day-of-month with a restricted weekday still ANDs", not schedule.matches(cron("35 9 */1 * 1"), utc(SAT_0935)))
+check("a starred weekday with a restricted day-of-month still ANDs", not schedule.matches(cron("35 9 1 * */1"), utc(SAT_0935)))
 check("lists", schedule.matches(cron("0,35 8,9 * * *"), utc(SAT_0935)))
 
 check("latest picks the newest slot in the window",

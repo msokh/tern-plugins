@@ -21,7 +21,7 @@ else
 	file=${TERN_PLUGINS_DENYLIST_FILE:-$HOME/.config/tern-plugins/denylist}
 	[ -r "$file" ] && cat "$file" > "$raw"
 fi
-grep -v -e '^[[:space:]]*$' -e "^${owner}\$" -i "$raw" > "$list" || true
+tr -d '\r' < "$raw" | grep -v -e '^[[:space:]]*$' -e "^${owner}\$" -i > "$list" || true
 if [ ! -s "$list" ]; then
 	echo "check-public: no denylist; set TERN_PLUGINS_DENYLIST or TERN_PLUGINS_DENYLIST_FILE" >&2
 	exit 2

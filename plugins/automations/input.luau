@@ -21,6 +21,10 @@ local function byteAt(text: string, position: number): number
 	return utf8.offset(text, position + 1) or (#text + 1)
 end
 
+local function lineEndings(text: string): string
+	return (string.gsub(string.gsub(text, "\r\n", "\n"), "\r", "\n"))
+end
+
 local function isControl(code: number, multiline: boolean): boolean
 	if multiline and (code == 10 or code == 9) then
 		return false
@@ -42,7 +46,7 @@ end
 
 function Input.new(text: string?, multiline: boolean?): Field
 	local multi = multiline == true
-	local value = text or ""
+	local value = if multi then lineEndings(text or "") else text or ""
 	if not Input.valid(value, multi) then
 		value = ""
 	end
@@ -54,7 +58,8 @@ function Input.length(field: Field): number
 end
 
 function Input.setText(field: Field, text: string)
-	field.text = if Input.valid(text, field.multiline) then text else ""
+	local value = if field.multiline then lineEndings(text) else text
+	field.text = if Input.valid(value, field.multiline) then value else ""
 	field.cursor = Input.length(field)
 	field.anchor = nil
 	table.clear(field.past)
@@ -172,7 +177,7 @@ local function moveLine(field: Field, down: boolean, extend: boolean)
 end
 
 local function normalize(text: string, multiline: boolean): string
-	local value = string.gsub(string.gsub(text, "\r\n", "\n"), "\r", "\n")
+	local value = lineEndings(text)
 	if multiline then
 		return value
 	end
