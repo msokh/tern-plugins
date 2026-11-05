@@ -186,6 +186,12 @@ function Model.encodeArgv(list: { string }): string
 		local escaped = string.gsub(item, '[%c"\\]', function(char: string): string
 			return ESCAPES[char] or string.format("\\u%04x", string.byte(char))
 		end)
+		escaped = string.gsub(escaped, "\194([\128-\159])", function(char: string): string
+			return string.format("\\u%04x", string.byte(char))
+		end)
+		escaped = string.gsub(escaped, "\226\128([\168\169])", function(char: string): string
+			return string.format("\\u20%02x", string.byte(char) - 128)
+		end)
 		table.insert(parts, `"{escaped}"`)
 	end
 	return `[{table.concat(parts, ", ")}]`
@@ -363,7 +369,7 @@ function Model.draftFrom(definition: Definition, revision: string?): Draft
 		if trigger.kind == "schedule" then
 			addTrigger(draft, "schedule", trigger.cron, "", "")
 		else
-			addTrigger(draft, trigger.source, "", trigger.event, trigger.filter)
+			addTrigger(draft, trigger.source, "", trigger.event, (string.gsub(trigger.filter, "%s+", " ")))
 		end
 	end
 	return draft

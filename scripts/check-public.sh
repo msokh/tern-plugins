@@ -55,6 +55,9 @@ history)
 			git log -1 --format=%B "$rev" | grep -q -i -F -f "$list"; then
 			fail "commit $rev contains a denylisted name"
 		fi
+		if git grep -q -I -E "$home_paths" "$rev" -- . ':!scripts/check-public.sh'; then
+			fail "commit $rev contains an absolute home path"
+		fi
 	done
 	gitleaks git --no-banner --redact . >&2 || fail "gitleaks found a secret in history"
 	;;
