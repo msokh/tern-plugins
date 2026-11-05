@@ -1,0 +1,13 @@
+schema = 1
+id = "automations"
+name = "Automations"
+version = "0.2.0"
+description = "Starts agents on a schedule or when an event arrives, each run in its own Tern session, with a manager to create, edit and run them."
+host = "host.luau"
+window = "window.luau"
+styles = ["styles.css"]
+
+[[blocks]]
+id = "manager"
+title = "Automations"
+palette = false
