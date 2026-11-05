@@ -146,6 +146,9 @@ local function validArgv(args: { string }): boolean
 end
 
 local function validCwd(cwd: string): boolean
+	if string.match(cwd, "^%s") ~= nil or string.match(cwd, "%s$") ~= nil then
+		return false
+	end
 	return cwd == "~" or string.sub(cwd, 1, 1) == "/" or string.sub(cwd, 1, 2) == "~/"
 end
 

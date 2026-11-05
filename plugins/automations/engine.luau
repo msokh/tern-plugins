@@ -513,6 +513,9 @@ local function create(env: Env): Runtime
 				fail("the run's worktree folder already exists")
 				return
 			end
+			if not stillEnabled(a, run) then
+				return
+			end
 			mkdirs(p.state, p.worktrees)
 			local started = spawn(runner.worktreeArgv(top, path, def.base_branch), { env = runner.GIT_ENV, timeout_ms = GIT_TIMEOUT_MS }, function(added)
 				if added.status ~= 0 then

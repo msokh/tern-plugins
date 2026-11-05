@@ -56,6 +56,9 @@ local function parseFilter(text: string): ({ Term }?, string?)
 		if not key or not value or not validAttributeKey(key) then
 			return nil, `filter term "{word}" must look like key=value`
 		end
+		if string.find(value, "[%c\127]") or string.find(value, "\194[\128-\159]") or string.find(value, "\226\128[\168\169]") then
+			return nil, `filter term "{key}" has a control character in its value`
+		end
 		local prefix = string.sub(value, -1) == "*"
 		table.insert(terms, { key = key, value = if prefix then string.sub(value, 1, -2) else value, prefix = prefix })
 	end
