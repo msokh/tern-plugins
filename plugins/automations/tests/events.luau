@@ -39,6 +39,7 @@ check("every term must match", matches("pull_request", "repo=example-org/example
 check("a trailing * matches by prefix", matches("pull_request", "repo=example-org/*"))
 check("a missing attribute never matches", not matches("pull_request", "branch=main"))
 check("a malformed term is an error", events.parseFilter("nonsense") == nil)
+check("a control character in a filter value is an error", events.parseFilter("a=b\1c") == nil and events.parseFilter("a=b\u{2028}c") == nil and events.parseFilter("a=b\u{85}c") == nil)
 
 check("unknown fields are refused", events.parse({ id = "a", source = "github", event = "x", received_at = 1, surprise = true }) == nil)
 check("an unknown source is refused", events.parse({ id = "a", source = "email", event = "x", received_at = 1 }) == nil)

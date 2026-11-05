@@ -50,6 +50,9 @@ check("~ expands only on request", config.expand("~/x", "/h") == "/h/x" and firs
 check("a missing automations array is reported", #parse("{}").errors == 1 and parse("{}").unsaveable == nil)
 check("a non-JSON file cannot be saved over", parse("{ nope").unsaveable ~= nil)
 
+local padded = parse([[{"automations":[{"id":"padded","cron":"* * * * *","cwd":"/tmp/project ","command":["true"]}]}]])
+check("a cwd with surrounding whitespace is reported, not trimmed later by the editor", #config.definitions(padded) == 0 and #padded.errors == 1)
+
 local emptyArg = parse([[{"automations":[{"id":"replace","cron":"* * * * *","cwd":"/tmp","command":["sed","-i","","s/a/b/","f"]}]}]])
 local emptyArgDef = config.definitions(emptyArg)[1]
 check("an empty argument after the program loads in its original position", emptyArgDef ~= nil and #emptyArgDef.command == 5 and emptyArgDef.command[3] == "")
