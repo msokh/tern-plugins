@@ -112,6 +112,7 @@ do
 	f.paneExit(9, 0)
 	f.calls[2].reply(support.ok('{"block":9}'))
 	check("an exit seen before the launch reply is kept", lastRun(f).phase == "exited" and lastRun(f).status == 0)
+	check("an early exit still keeps the session to open", lastRun(f).pane == 9)
 	check("a second run in the same second is refused", not (f.engine.runNow("legacy")))
 
 	f.setNow(SAT_0935 + 2)
@@ -331,6 +332,38 @@ do
 	draft.cwd = "/example/changed"
 	local saved = f.engine.save(draft, originalRevision)
 	check("a displayed snapshot cannot acquire the revision of an unseen external edit", not saved and f.files[f.paths.config] == external)
+end
+
+do
+	local paused = support.newFake("/x", nil, nil, SAT_0935)
+	paused.files[paused.paths.config] = LEGACY
+	paused.engine.start()
+	check("pausing saves", (paused.engine.setEnabled("legacy", false, nil)))
+	paused.engine.tick()
+	check("a paused automation does not start on a due slot", #paused.calls == 0 and #paused.engine.snapshot().runs == 0)
+
+	local racing = support.newFake("/x", nil, nil, SAT_0935)
+	racing.files[racing.paths.config] = LEGACY
+	racing.engine.start()
+	racing.engine.tick()
+	check("the due slot waits on its precheck", #racing.calls == 1 and racing.calls[1].argv[1] == "true")
+	racing.engine.setEnabled("legacy", false, nil)
+	racing.calls[1].reply(support.ok())
+	check("pausing during the precheck stops the run before launch", lastRun(racing).phase == "skipped" and #racing.calls == 1)
+
+	local watcher = support.newFake("/x", nil, nil, SAT_0935)
+	watcher.engine.start()
+	local def = make("")
+	def.name = "Review"
+	def.agent = "omp"
+	def.command = {}
+	def.instructions = "Review the change."
+	def.enabled = false
+	def.triggers = { { kind = "event", source = "github", event = "pull_request", filter = "" } }
+	watcher.engine.save(def, nil)
+	watcher.files[`{watcher.paths.inbox}/github-p1.json`] = string.format('{"id":"p1","source":"github","event":"pull_request","received_at":%d,"attributes":{},"payload":{}}', SAT_0935)
+	watcher.engine.tick()
+	check("a paused automation does not start on a matching event", #watcher.calls == 0)
 end
 
 if failures > 0 then

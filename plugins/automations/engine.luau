@@ -92,6 +92,7 @@ local KEEP_RUNS = 20
 local RECLAIMABLE_PHASES: { [string]: boolean } = {
 	exited = true,
 	launch_failed = true,
+	skipped = true,
 	skipped_precheck = true,
 	missed = true,
 }
@@ -417,6 +418,13 @@ local function create(env: Env): Runtime
 
 	local function launch(a: config.Automation, run: Run, cwd: string, runDir: string, ev: events.Event?)
 		local def = a.def
+		if run.trigger ~= "manual" then
+			local current = refresh(true).automations[def.id]
+			if not current or not current.def.enabled then
+				conclude(def.id, run, "skipped", "paused before the run started", nil)
+				return
+			end
+		end
 		local promptFile = `{runDir}/prompt.md`
 		local evJson = if ev then eventJson(ev) else nil
 		local wrote = pcall(function()
@@ -459,6 +467,7 @@ local function create(env: Env): Runtime
 			for i, early in earlyExits do
 				if early.pane == block then
 					table.remove(earlyExits, i)
+					run.pane = block
 					conclude(def.id, run, "exited", nil, early.status)
 					return
 				end

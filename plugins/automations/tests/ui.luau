@@ -107,6 +107,9 @@ check("redo reapplies a selected deletion", selected.text == "")
 local original = { "run", 'say "hi"', "back\\slash", "日本", "tab\there" }
 local decoded = Model.decodeArgv(Model.encodeArgv(original))
 check("argv round-trips quotes, escapes and Unicode", decoded ~= nil and table.concat(decoded, "|") == table.concat(original, "|"))
+local c1 = Model.decodeArgv(Model.encodeArgv({ "a\u{85}b\u{2028}c" }))
+check("argv round-trips C1 and line-separator characters", c1 ~= nil and c1[1] == "a\u{85}b\u{2028}c")
+check("encoded argv is always editable text", Input.valid(Model.encodeArgv({ "a\u{85}b\u{2028}c" }), false))
 local pair = Model.decodeArgv('["a\\ud83d\\ude00"]')
 check("surrogate escapes combine", pair ~= nil and pair[1] == "a😀")
 check("non-arrays are rejected", select(2, Model.decodeArgv("omp -p x")) ~= nil)
@@ -169,6 +172,9 @@ local loaded = Model.draftFrom(definition("a", { triggers = { { kind = "event", 
 check("editing keeps id and revision", loaded.id == "a" and loaded.revision == "rev")
 local round = Model.toDefinition(loaded).definition
 check("editing round-trips an event trigger", round ~= nil and round.id == "a" and round.triggers[1].kind == "event" and round.triggers[1].filter == "channel=ops*")
+local tabbed = Model.draftFrom(definition("a", { triggers = { { kind = "event", source = "github", event = "pull_request", filter = "repo=example-org/example-repo\tlabel=ready" } } }), "rev")
+local tabbedBack = Model.toDefinition(tabbed).definition
+check("editing keeps a tab-separated filter", tabbedBack ~= nil and tabbedBack.triggers[1].kind == "event" and tabbedBack.triggers[1].filter == "repo=example-org/example-repo label=ready")
 check("untouched draft is not dirty", not Model.dirty(loaded, Model.draftFrom(definition("a", { triggers = { { kind = "event", source = "slack", event = "message", filter = "channel=ops*" } } }), "rev")))
 Input.setText(loaded.fields.name, "Changed")
 check("edited draft is dirty", Model.dirty(loaded, Model.draftFrom(definition("a", {}), "rev")))

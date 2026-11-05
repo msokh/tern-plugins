@@ -31,4 +31,4 @@ jobs:
         run: |
           luau plugins/automations/tests/run.luau
           luau plugins/automations/tests/ui.luau
-          node --test plugins/automations/tests/receiver.test.mjs
+          node --test plugins/automations/tests/receiver.test.mjs plugins/automations/tests/styles.test.mjs
