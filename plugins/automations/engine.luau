@@ -416,14 +416,22 @@ local function create(env: Env): Runtime
 		return canon.encode(leaf, {}, doc, true)
 	end
 
+	local function stillEnabled(a: config.Automation, run: Run): boolean
+		if run.trigger == "manual" then
+			return true
+		end
+		local current = refresh(true).automations[a.def.id]
+		if current and current.def.enabled then
+			return true
+		end
+		conclude(a.def.id, run, "skipped", "paused before the run started", nil)
+		return false
+	end
+
 	local function launch(a: config.Automation, run: Run, cwd: string, runDir: string, ev: events.Event?)
 		local def = a.def
-		if run.trigger ~= "manual" then
-			local current = refresh(true).automations[def.id]
-			if not current or not current.def.enabled then
-				conclude(def.id, run, "skipped", "paused before the run started", nil)
-				return
-			end
+		if not stillEnabled(a, run) then
+			return
 		end
 		local promptFile = `{runDir}/prompt.md`
 		local evJson = if ev then eventJson(ev) else nil
@@ -485,6 +493,9 @@ local function create(env: Env): Runtime
 		local def = a.def
 		if def.workspace ~= "worktree" then
 			launch(a, run, cwd, runDir, ev)
+			return
+		end
+		if not stillEnabled(a, run) then
 			return
 		end
 		local name = runner.runName(def.id, run.key)

@@ -92,7 +92,7 @@ export function createReceiver({ token, stateDir = defaultStateDir(), now = () =
 			req.on("error", reject);
 		});
 
-	async function accept(event) {
+	async function acceptOne(event) {
 		const name = `${event.source}-${createHash("sha256").update(`${event.source}:${event.id}`).digest("hex").slice(0, 32)}.json`;
 		await mkdir(inbox, { recursive: true, mode: 0o700 });
 		await mkdir(seen, { recursive: true, mode: 0o700 });
@@ -119,6 +119,13 @@ export function createReceiver({ token, stateDir = defaultStateDir(), now = () =
 		}
 		return "accepted";
 	}
+
+	let queue = Promise.resolve();
+	const accept = (event) => {
+		const run = queue.then(() => acceptOne(event));
+		queue = run.catch(() => {});
+		return run;
+	};
 
 	async function pruneSeen() {
 		try {

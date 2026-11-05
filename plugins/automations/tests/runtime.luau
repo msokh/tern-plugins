@@ -351,6 +351,21 @@ do
 	racing.calls[1].reply(support.ok())
 	check("pausing during the precheck stops the run before launch", lastRun(racing).phase == "skipped" and #racing.calls == 1)
 
+	local tree = support.newFake("/x", nil, nil, SAT_0935 - 60)
+	tree.engine.start()
+	local treeDef = make("tree")
+	treeDef.workspace = "worktree"
+	treeDef.cwd = "/example/repo"
+	treeDef.base_branch = "main"
+	treeDef.precheck = { command = { "true" }, timeout_seconds = 5 }
+	treeDef.triggers = { { kind = "schedule", cron = "35 9 * * *" } }
+	tree.engine.save(treeDef, nil)
+	tree.setNow(SAT_0935)
+	tree.engine.tick()
+	tree.engine.setEnabled("tree", false, nil)
+	tree.calls[1].reply(support.ok())
+	check("pausing during the precheck creates no worktree", lastRun(tree).phase == "skipped" and #tree.calls == 1)
+
 	local watcher = support.newFake("/x", nil, nil, SAT_0935)
 	watcher.engine.start()
 	local def = make("")

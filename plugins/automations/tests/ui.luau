@@ -176,6 +176,9 @@ local tabbed = Model.draftFrom(definition("a", { triggers = { { kind = "event", 
 local tabbedBack = Model.toDefinition(tabbed).definition
 check("editing keeps a tab-separated filter", tabbedBack ~= nil and tabbedBack.triggers[1].kind == "event" and tabbedBack.triggers[1].filter == "repo=example-org/example-repo label=ready")
 check("untouched draft is not dirty", not Model.dirty(loaded, Model.draftFrom(definition("a", { triggers = { { kind = "event", source = "slack", event = "message", filter = "channel=ops*" } } }), "rev")))
+local crlf = Model.draftFrom(definition("a", { instructions = "one\r\ntwo" }), "rev")
+local crlfBack = Model.toDefinition(crlf)
+check("editing keeps instructions that use CRLF line endings", crlfBack.definition ~= nil and crlfBack.definition.instructions == "one\ntwo")
 Input.setText(loaded.fields.name, "Changed")
 check("edited draft is dirty", Model.dirty(loaded, Model.draftFrom(definition("a", {}), "rev")))
 

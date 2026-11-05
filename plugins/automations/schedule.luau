@@ -81,19 +81,17 @@ local function parse(text: string): (Cron?, string?)
 		dom = sets.dom,
 		month = sets.month,
 		dow = sets.dow,
-		anyDom = fields[3] == "*",
-		anyDow = fields[5] == "*",
+		anyDom = string.sub(fields[3], 1, 1) == "*",
+		anyDow = string.sub(fields[5], 1, 1) == "*",
 	}, nil
 end
 
 local function dayMatches(cron: Cron, d: Date): boolean
 	local domHit = cron.dom[d.day] == true
 	local dowHit = cron.dow[d.wday - 1] == true
-	-- Why: standard cron ORs the two day fields when both are restricted.
-	if cron.anyDom then
-		return dowHit
-	elseif cron.anyDow then
-		return domHit
+	-- Why: standard cron ORs the two day fields only when neither starts with `*` (so `*/2` still ANDs).
+	if cron.anyDom or cron.anyDow then
+		return domHit and dowHit
 	end
 	return domHit or dowHit
 end
