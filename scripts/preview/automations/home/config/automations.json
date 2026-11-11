@@ -1,0 +1,47 @@
+{
+  "automations": [
+    {
+      "id": "nightly-review",
+      "name": "Nightly review",
+      "agent": "codex",
+      "instructions": "Review the changes merged since yesterday.\nReport risky diffs, missing tests and follow-ups as a short list.",
+      "workspace": "existing",
+      "cwd": "~/example-project",
+      "triggers": [
+        { "kind": "schedule", "cron": "0 3 29 2 *" },
+        { "kind": "event", "source": "github", "event": "push", "filter": "branch=main" }
+      ],
+      "enabled": true
+    },
+    {
+      "id": "pr-triage",
+      "name": "PR triage",
+      "agent": "claude",
+      "instructions": "Label the new pull request and summarize it in two sentences.",
+      "workspace": "worktree",
+      "cwd": "~/example-project",
+      "base_branch": "main",
+      "triggers": [{ "kind": "event", "source": "github", "event": "pull_request.opened", "filter": "repo=example/*" }],
+      "enabled": true
+    },
+    {
+      "id": "weekly-cleanup",
+      "name": "Weekly cleanup",
+      "agent": "command",
+      "command": ["true"],
+      "workspace": "none",
+      "triggers": [{ "kind": "schedule", "cron": "0 9 * * 1" }],
+      "enabled": false
+    },
+    {
+      "id": "release-notes",
+      "name": "Release notes draft",
+      "agent": "omp",
+      "instructions": "Draft release notes from the commits since the last tag.",
+      "workspace": "existing",
+      "cwd": "~/example-project",
+      "triggers": [],
+      "enabled": true
+    }
+  ]
+}
