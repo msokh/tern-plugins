@@ -291,7 +291,7 @@ end
 
 local function onAction(state: State, ev: UiEvent, cx: BlockCx, runtime: Runtime)
 	local act = if type(ev.act) == "string" then ev.act else ""
-	local value = if type(ev.value) == "string" then ev.value else ""
+	local value = if type(ev.value) == "string" then ev.value elseif type(ev.item) == "string" then ev.item else ""
 	if state.mode == "run" then
 		state.notice = nil
 		if act == "back" then
@@ -344,9 +344,26 @@ local function onAction(state: State, ev: UiEvent, cx: BlockCx, runtime: Runtime
 	end
 end
 
+local function rowAct(state: State): string?
+	if state.mode == "overview" then
+		return if state.tab == "automations" then "select" else "open-run"
+	elseif state.mode == "detail" and state.detailTab == "runs" then
+		return "open-run"
+	end
+	return nil
+end
+
 local function onEvent(state: State, ev: UiEvent, cx: BlockCx, runtime: Runtime)
 	if ev.ev == "action" then
 		onAction(state, ev, cx, runtime)
+	elseif ev.ev == "select" and type(ev.item) == "string" and type(ev.id) == "string" and (string.sub(ev.id, -5) == ".tabs" or string.sub(ev.id, -7) == ".filter") then
+		local act = if string.sub(ev.id, -7) == ".filter" then "filter" elseif state.mode == "detail" then "detail-tab" else "tab"
+		onAction(state, { ev = "action", act = act, item = ev.item }, cx, runtime)
+	elseif (ev.ev == "select" or ev.ev == "activate") and type(ev.item) == "string" then
+		local act = rowAct(state)
+		if act ~= nil then
+			onAction(state, { ev = "action", act = act, item = ev.item }, cx, runtime)
+		end
 	elseif ev.ev == "focus" and type(ev.id) == "string" then
 		for key, id in state.ids do
 			if id == ev.id then
