@@ -23,7 +23,7 @@ end
 
 -- The id of a node under a group of the open tab: group title, then the keys down to it.
 function Kit.at(title: string, ...: string): string
-	local id = "main.body." .. Kit.slug(title)
+	local id = "main.page.body." .. Kit.slug(title)
 	for _, key in { ... } do
 		id ..= "." .. key
 	end

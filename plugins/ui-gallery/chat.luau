@@ -246,6 +246,25 @@ local function prompts(s: Kit.State): { any }
 	}
 end
 
+-- A composer is one framed editor: the attachment tray over it, Attach and Send inside its ring.
+local function composer(s: Kit.State): { any }
+	return {
+		group("Composer: tray, attach, send", {
+			ui.row({
+				node("attachment", { key = "cp1", variant = "pill", name = "report.pdf", removable = true }),
+				node("attachment", { key = "cp2", variant = "pill", name = "main.rs", removable = true }),
+			}),
+			node("editor", {
+				key = "cmp",
+				text = Kit.val(s, "cmp", "Review the lockfile change and summarize the risk."),
+				variant = "field",
+				placeholder = "Message omp",
+				buttons = { { act = "attach", icon = "file-plus", title = "Attach" }, { act = "send", text = "Send", variant = "primary", keys = { "enter" } } },
+			}),
+		}),
+	}
+end
+
 local Chat: Kit.Section = {
 	id = "chat",
 	label = "Chat",
@@ -258,6 +277,9 @@ local Chat: Kit.Section = {
 			table.insert(out, g)
 		end
 		for _, g in prompts(s) do
+			table.insert(out, g)
+		end
+		for _, g in composer(s) do
 			table.insert(out, g)
 		end
 		return out
