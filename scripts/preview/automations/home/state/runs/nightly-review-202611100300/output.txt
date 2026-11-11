@@ -1,0 +1,6 @@
+Reviewed 6 merged pull requests.
+
+- #412 changes the retry policy without a test.
+- #415 is safe.
+
+No blocking issues.
