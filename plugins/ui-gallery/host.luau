@@ -4,12 +4,21 @@ local Chat = require("./chat")
 local Container = require("./container")
 local Content = require("./content")
 local Layout = require("./layout")
+local Page = require("./ui/page")
+local Checkbox = require("./ui/checkbox")
+local Radio = require("./ui/radio")
+local MultiSelect = require("./ui/multiselect")
 
 local ui = tern.ui
 
 type State = Kit.State
 
-local group, node, val, bound = Kit.group, Kit.node, Kit.val, Kit.bound
+local group, node, val, bound, at = Kit.group, Kit.node, Kit.val, Kit.bound, Kit.at
+
+local CHANNELS: { Checkbox.Option } = { { id = "email", label = "Email", detail = "On every failure" }, { id = "slack", label = "Slack" }, { id = "hook", label = "Webhook", disabled = true } }
+local SCHEDULES: { Checkbox.Option } = { { id = "daily", label = "Daily" }, { id = "weekly", label = "Weekly", detail = "Mondays at 03:00" }, { id = "monthly", label = "Monthly", disabled = true } }
+local LABELS: { Checkbox.Option } = { { id = "bug", label = "Bug" }, { id = "docs", label = "Docs" }, { id = "perf", label = "Perf" } }
+local DEFAULTS = { cb_one = { "terms" }, cb_list = { "slack" }, radio = "weekly", msel = { "bug", "docs" } }
 
 local SELECT_OPTIONS = {
 	{ value = "sonnet", label = "Sonnet 4.5", detail = "$3 / $15" },
@@ -28,6 +37,38 @@ local MENU_ITEMS = {
 	"-",
 	{ id = "del", label = "Delete", danger = true, icon = "trash" },
 }
+
+local MENUBAR_VIEW = {
+	{ id = "zoom", label = "Zoom in", keys = { "cmd", "+" } },
+	{ id = "export", label = "Export", icon = "open", items = { { id = "json", label = "JSON" }, { id = "csv", label = "CSV" } } },
+	"-",
+	{ id = "sidebar", label = "Sidebar", checked = true },
+}
+
+local TYPEAHEAD = {
+	{ value = "sonnet", label = "Sonnet 4.5", detail = "$3 / $15", icon = "provider:anthropic", group = "Anthropic" },
+	{ value = "opus", label = "Opus 4.1", detail = "$15 / $75", icon = "provider:anthropic", group = "Anthropic" },
+	{ value = "codex", label = "GPT-5 Codex", detail = "$1.25 / $10", icon = "provider:openai", group = "OpenAI" },
+	{ value = "o3", label = "o3", detail = "retired", icon = "provider:openai", group = "OpenAI", disabled = true },
+}
+
+local HOVER_CARD = ui.col({
+	ui.text({ ui.span("Frozen lockfile", "strong") }),
+	ui.text({ ui.span("CI fails when the lockfile needs an update.", "muted") }),
+	ui.kv({ { "fix", "pnpm install" }, { "seen", "3 runs" } }),
+})
+
+local POPOVER_ANCHOR = at("Open an overlay", "btns", "pop")
+
+local PALETTE = {
+	{ id = "review", label = "Review changes", icon = "diff", detail = "the working tree", facts = { keys = "⌘R" }, hits = { { 0, 2 } } },
+	{ id = "revert", label = "Revert last edit", icon = "undo", facts = { keys = "⌘Z" }, hits = { { 0, 2 } } },
+	{ id = "rename", label = "Rename session", icon = "pen", facts = { keys = "F2" }, hits = { { 0, 2 } } },
+	{ id = "restart", label = "Restart agent", icon = "repeat", hits = { { 0, 2 } } },
+	{ id = "resume", label = "Resume a session", icon = "history", detail = "from the list", hits = { { 0, 2 } } },
+}
+
+local PALETTE_ORDER = { { group = "review", label = "Review", count = 2 }, "review", "revert", { group = "session", label = "Session", count = 3 }, "rename", "restart", "resume" }
 
 local sections = {
 	{
@@ -93,7 +134,7 @@ local sections = {
 					node("input", { key = "i1", text = "", placeholder = "Search automations" }),
 					node("input", { key = "i2", text = "", placeholder = "Search automations", variant = "field", icon = "search" }),
 					node("input", { key = "i3", text = "Nightly review", variant = "field", clear = true }),
-					node("input", { key = "i4", text = "42", variant = "field", stepper = true, unit = "min" }),
+					node("input", { key = "i4", text = val(s, "i4", "42"), variant = "field", stepper = true, unit = "min", role = "gallery.number" }),
 					node("input", { key = "i5", text = "hunter2", variant = "field", secret = true }),
 					node("input", { key = "i6", text = "example.com", variant = "field", prefix = "https://", suffix = ".org" }),
 				}),
@@ -124,7 +165,7 @@ local sections = {
 						bound(s, "select", "sel3", { options = SELECT_OPTIONS, placeholder = "Choose a model", size = "sm" }),
 						bound(s, "select", "sel4", { value = "haiku", options = SELECT_OPTIONS, disabled = "Locked" }),
 					}),
-					bound(s, "select", "sel5", { search = true, value = "sonnet", options = SELECT_OPTIONS, query = "son", total = 24, open = true }),
+					bound(s, "select", "sel5", { search = true, value = val(s, "sel5", "sonnet"), options = TYPEAHEAD, query = "o", total = 24, open = val(s, "sel5_open", false), role = "gallery.typeahead" }),
 				}),
 				group("Switch", {
 					bound(s, "switch", "sw1", { label = "Notifications", hint = "Email when a run fails", on = val(s, "sw1", true) }),
@@ -137,8 +178,12 @@ local sections = {
 					bound(s, "slider", "sl2", { variant = "accent", label = "Temperature", min = 0, max = 1, step = 0.1, value = val(s, "sl2", 0.6) }),
 					bound(s, "slider", "sl3", { label = "Window", min = 0, max = 2000, format = "duration", value = { 200, 1200 } }),
 				}),
-				group("Checkbox / radio", {
-					ui.text({ ui.span("No native kind: only the banned `el` input draws one. See README.", "muted") }),
+				group("Checkbox, radio list, multi selector (lib/ui)", {
+					Checkbox.render("cb_one", { { id = "terms", label = "Accept the terms" } }, val(s, "cb_one", DEFAULTS.cb_one)),
+					Checkbox.render("cb_list", CHANNELS, val(s, "cb_list", DEFAULTS.cb_list)),
+					Radio.render("radio", SCHEDULES, val(s, "radio", DEFAULTS.radio)),
+					MultiSelect.render("msel", LABELS, val(s, "msel", DEFAULTS.msel), "Labels"),
+					node("spacer", { size = "lg" }),
 				}),
 				group("Date and calendar", {
 					ui.row({
@@ -148,7 +193,7 @@ local sections = {
 					bound(s, "calendar", "cal3", { variant = "week", presets = { { id = "today", label = "Today" }, { id = "7", label = "Last 7 days" } }, preset = val(s, "cal3_p", "7"), value = { "2026-11-05", "2026-11-11" }, today = "2026-11-11" }),
 					ui.row({
 						bound(s, "date", "d1", { value = val(s, "d1", "2026-11-11"), open = val(s, "d1_open", false), today = "2026-11-11" }),
-						bound(s, "date", "d2", { range = true, placeholder = "Pick dates", today = "2026-11-11" }),
+						bound(s, "date", "d2", { range = true, placeholder = "Pick dates", month = "2026-11", today = "2026-11-11", role = "gallery.daterange" }),
 					}),
 				}),
 				group("OTP", {
@@ -177,7 +222,14 @@ local sections = {
 				group("Spinner styles", { ui.row({ node("spinner", { style = "braille", label = "braille" }), node("spinner", { style = "starburst", label = "starburst" }), node("spinner", { style = "orbit", label = "orbit" }) }) }),
 				group("Skeleton", { node("skeleton", { shape = "text", lines = 2 }), node("skeleton", { shape = "avatar" }), node("skeleton", { shape = "rows", rows = 2, variant = "pulse" }) }),
 				group("Banner (card with tone)", { node("card", { head = "Heads up", tone = "warning", icon = "warn" }, { ui.text("Runs are paused until you resume them.") }) }),
-				group("Info tip (title, hovercard)", { ui.row({ ui.span and ui.text({ ui.span("Hover me", "strong") }) or ui.text("Hover me"), node("icon", { name = "info", title = "A plain tooltip" }) }) }),
+				group("Info tip (tooltip, hover card)", {
+					ui.row({
+						ui.text({ ui.span("Tooltip", "muted") }),
+						node("icon", { name = "info", title = "Runs again when the lockfile changes", role = "gallery.infotip" }),
+						ui.text({ ui.span("Hover card", "muted") }),
+						node("icon", { name = "help", hovercard = HOVER_CARD, role = "gallery.infocard" }),
+					}),
+				}),
 				group("Table dot cells", { ui.table({ { id = "n", head = "Run" }, { id = "s", head = "State" } }, { { id = "a", cells = { { "nightly" }, { text = "ok", dot = "success" } } }, { id = "b", cells = { { "weekly" }, { text = "failed", dot = "error" } } } }) }),
 			}
 		end,
@@ -201,11 +253,20 @@ local sections = {
 					bound(s, "pager", "pg3", { variant = "more", page = 1, total = 312, size = 50, label = "commits" }),
 				}),
 				group("Nav (side, top)", {
-					bound(s, "nav", "nv1", { active = val(s, "nv1", "a"), items = { { id = "a", label = "Overview", icon = "home" }, { id = "b", label = "Runs", count = 12 }, { id = "c", label = "More", items = { { id = "c1", label = "Settings" }, { id = "c2", label = "Billing" } } } } }),
-					bound(s, "nav", "nv2", { variant = "links", active = val(s, "nv2", "a"), items = { { id = "a", label = "Docs" }, { id = "b", label = "Blog" } } }),
+					bound(s, "nav", "nv1", { role = "gallery.navpills", active = val(s, "nv1", "a"), items = { { id = "a", label = "Overview", icon = "home" }, { id = "b", label = "Runs", count = 12 }, { id = "c", label = "More", items = { { id = "c1", label = "Settings" }, { id = "c2", label = "Billing" } } } } }),
+					bound(s, "nav", "nv2", {
+						role = "gallery.meganav",
+						variant = "links",
+						active = val(s, "nv2", "a"),
+						items = {
+							{ id = "a", label = "Docs" },
+							{ id = "prod", label = "Products", items = { { id = "p1", label = "Atlas", detail = "Map every service", icon = "globe" }, { id = "p2", label = "Relay", detail = "Route events between teams", icon = "broadcast" }, { id = "p3", label = "Ledger", detail = "Every release, with rollbacks", icon = "history" }, { id = "p4", label = "Probe", detail = "Checks before a promote", icon = "bolt" } } },
+							{ id = "b", label = "Blog" },
+						},
+					}),
 				}),
 				group("Menubar", {
-					node("menubar", { key = "mb", icon = "terminal", menus = { { id = "file", label = "File", items = { { id = "new", label = "New" }, { id = "quit", label = "Quit" } } }, { id = "view", label = "View", items = MENU_ITEMS } } }),
+					node("menubar", { key = "mb", role = "gallery.menubar", icon = "terminal", menus = { { id = "file", label = "File", items = { { id = "new", label = "New" }, { id = "quit", label = "Quit" } } }, { id = "view", label = "View", items = MENUBAR_VIEW } } }),
 				}),
 				group("Stepper (row of badges)", { ui.row({ ui.badge("1 Plan", "success"), ui.text("›"), ui.badge("2 Build", "accent"), ui.text("›"), ui.badge("3 Ship", "muted") }) }),
 			}
@@ -222,7 +283,7 @@ local sections = {
 			return {
 				group("Table (selectable, sortable, multi)", {
 					bound(s, "table", "t1", { selectable = true, selected = val(s, "t1", "b"), sort = { col = "n", dir = "asc" }, cols = { { id = "n", head = "Name", grow = 1, sortable = true }, { id = "s", head = "State" }, { id = "m", head = "Load" } }, rows = rows }),
-					bound(s, "table", "t2", { multi = true, picked = val(s, "t2", { "a" }), cols = { { id = "n", head = "Name", grow = 1 }, { id = "s", head = "State" } }, rows = rows, bar = { { act = "stop", label = "Stop" } } }),
+					bound(s, "table", "t2", { multi = true, picked = val(s, "t2", { "a" }), cols = { { id = "n", head = "Name", grow = 1 }, { id = "s", head = "State" } }, rows = rows, bar = { { act = "stop", text = "Stop" } } }),
 				}),
 				group("List", {
 					bound(s, "list", "ls1", { selected = val(s, "ls1", nil), max = { lines = 6 } }, {
@@ -246,13 +307,21 @@ local sections = {
 		build = function(s: State): { any }
 			return {
 				group("Open an overlay", {
-					ui.row({
+					node("row", { key = "btns", gap = "sm" }, {
 						ui.button("Dialog", { actions = { click = "ov=dialog" } }),
 						ui.button("Drawer", { actions = { click = "ov=drawer" } }),
 						ui.button("Sheet", { actions = { click = "ov=sheet" } }),
 						ui.button("Toast", { actions = { click = "ov=toast" } }),
+						ui.button("Popover", { key = "pop", actions = { click = "ov=popover" } }),
+						ui.button("Palette", { actions = { click = "ov=palette" } }),
 					}),
 					ui.text({ ui.span("open: ", "muted"), ui.span(val(s, "ov", "none"), "strong") }),
+				}),
+				group("Tooltip and hover card", {
+					node("row", { key = "tips", gap = "sm" }, {
+						ui.button("Tooltip", { role = "gallery.tooltip", title = "Runs the automation now" }),
+						ui.button("Hover card", { role = "gallery.hovercard", hovercard = HOVER_CARD }),
+					}),
 				}),
 			}
 		end,
@@ -269,6 +338,28 @@ local sections = {
 				return node("overlay", { key = "drw", head = "Details", side = "right", modal = true, ["end"] = "layer.drw.end" }, { close, ui.text("Right-side sheet.") })
 			elseif which == "sheet" then
 				return node("overlay", { key = "sht", head = "Details", side = "bottom", ["end"] = "layer.sht.end" }, { close, ui.text("Bottom drawer.") })
+			elseif which == "popover" then
+				return node("overlay", { key = "pop", head = "Schedule", anchor = { node = POPOVER_ANCHOR, side = "below" }, ["end"] = "layer.pop.end" }, {
+					close,
+					ui.kv({ { "runs", "Every night at 03:00" }, { "next", "Tomorrow" } }),
+					node("switch", { key = "pop_weekends", label = "Skip weekends", on = val(s, "pop_weekends", false) }),
+				})
+			elseif which == "palette" then
+				return node("picker", {
+					key = "pal",
+					size = "md",
+					title = "Commands",
+					icon = "search",
+					query = "re",
+					placeholder = "Type a command",
+					noun = "commands",
+					total = 28,
+					items = PALETTE,
+					order = PALETTE_ORDER,
+					selected = val(s, "pal", "review"),
+					columns = { { id = "keys", head = "Keys", format = "dim" } },
+					actions = { { id = "close", label = "Close", keys = { "esc" } }, { id = "run", label = "Run", primary = true, keys = { "enter" } } },
+				})
 			end
 			return nil
 		end,
@@ -310,15 +401,29 @@ tern.block.define("gallery", {
 		return {
 			main = ui.col({
 				node("tabs", { key = "tabs", variant = "underline", active = state.tab, items = items }),
-				node("col", { key = "body", gap = "sm" }, body),
-				ui.text({ ui.span("last event: ", "muted"), ui.span(state.last, "muted") }),
+				Page.render({
+					node("col", { key = "body", gap = "sm", max = { w = "110ch" } }, body),
+					ui.text({ ui.span("last event: ", "muted"), ui.span(state.last, "muted") }),
+				}),
 			}),
 			layer = if layer then ui.col({ layer }) else nil,
 		}
 	end,
 	event = function(state: State, ev: UiEvent, cx: BlockCx)
 		local name: string? = if ev.id then (string.match(ev.id :: string, "([^%.]+)$") :: string?) else nil
-		if ev.ev == "select" and ev.id == "main.tabs" then
+		local one = Checkbox.pick(ev, "cb_one")
+		local many = Checkbox.pick(ev, "cb_list")
+		local radio = Radio.pick(ev, "radio")
+		local multi = MultiSelect.pick(ev, "msel")
+		if one then
+			state.v.cb_one = Checkbox.flip(val(state, "cb_one", DEFAULTS.cb_one), one)
+		elseif many then
+			state.v.cb_list = Checkbox.flip(val(state, "cb_list", DEFAULTS.cb_list), many)
+		elseif radio then
+			state.v.radio = radio
+		elseif multi then
+			state.v.msel = Checkbox.flip(val(state, "msel", DEFAULTS.msel), multi)
+		elseif ev.ev == "select" and ev.id == "main.tabs" then
 			state.tab = ev.item
 		elseif name and ev.ev == "select" then
 			state.v[name] = ev.item
@@ -328,6 +433,10 @@ tern.block.define("gallery", {
 			state.v[name] = ev.value
 		elseif name and ev.ev == "toggle" then
 			state.v[name .. "_open"] = if ev.open ~= nil then ev.open else not ev.collapsed
+		elseif ev.ev == "action" and name == "i4" and (ev.act == "inc" or ev.act == "dec") then
+			state.v.i4 = tostring((tonumber(val(state, "i4", "42")) or 0) + (if ev.act == "inc" then 5 else -5))
+		elseif ev.ev == "action" and name == "pal" and (ev.act == "close" or ev.act == "run") then
+			state.v.ov = "none"
 		elseif ev.ev == "action" and ev.act and ev.value ~= nil then
 			state.v[ev.act :: string] = ev.value
 			if ev.act == "ov" and ev.value == "toast" then
