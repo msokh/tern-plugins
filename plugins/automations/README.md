@@ -126,7 +126,10 @@ The scheduler does not replay events received before its first connection. A tri
 tern plugin link plugins/automations
 luau plugins/automations/tests/run.luau
 luau plugins/automations/tests/ui.luau
-node --test plugins/automations/tests/receiver.test.mjs plugins/automations/tests/styles.test.mjs
+node --test plugins/automations/tests/receiver.test.mjs
+node scripts/preview.mjs automations
 ```
 
-For disposable verification, set `TERN_AUTOMATIONS_HOME` before starting Tern and the receiver. Definitions use its `config/` directory, and runtime files use its `state/` directory. Also use a separate Tern configuration directory and daemon socket with `TERN_CONFIG_DIR` and `TERN_DAEMON_SOCKET`. The automation override alone does not isolate Tern's KV history, schedule cursors, or processed-event state.
+`scripts/preview.mjs` renders every screen of the manager from the fixtures in `scripts/preview/automations/` and prints one PNG per screen. It runs a renamed copy (`automations-preview`) with its own KV store and a fixture `TERN_AUTOMATIONS_HOME`, so the installed plugin and its real settings stay untouched.
+
+For other disposable verification, set `TERN_AUTOMATIONS_HOME` before starting Tern and the receiver. Definitions use its `config/` directory, and runtime files use its `state/` directory. Also use a separate Tern configuration directory and daemon socket with `TERN_CONFIG_DIR` and `TERN_DAEMON_SOCKET`. The automation override alone does not isolate Tern's KV history, schedule cursors, or processed-event state.

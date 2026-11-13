@@ -1,11 +1,10 @@
 --!strict
 local Input = require("./input")
 local Model = require("./model")
+local Page = require("./ui/page")
 
 local ui = tern.ui
 
-type Props = { [string]: unknown }
-type Ctx = { path: string, ids: { [string]: string } }
 type Draft = Model.Draft
 type Definition = Model.Definition
 type State = Model.State
@@ -14,97 +13,93 @@ local View = {}
 
 local RUNS_SHOWN = 100
 
-local TONE_ROLE: { [Model.Tone]: string } = {
-	ok = "automations.resultOk",
-	bad = "automations.resultBad",
-	warn = "automations.resultWarn",
-	info = "automations.resultInfo",
-	muted = "automations.resultMuted",
-}
-local TABLE_DOT: { [Model.Tone]: string? } = { ok = "success", bad = "error", warn = "warning", info = "info" }
+local BADGE_TONE: { [Model.Tone]: string } = { ok = "success", bad = "error", warn = "warning", info = "info", muted = "muted" }
+local DOT_TONE: { [Model.Tone]: string? } = { ok = "success", bad = "error", warn = "warning", info = "info" }
 
-local function sub(ctx: Ctx, key: string): Ctx
-	return { path = `{ctx.path}.{key}`, ids = ctx.ids }
+-- Every node that can sit on a focus path, and every sibling set, carries a key.
+local function keyed(node: Node, key: string, grow: number?): Node
+	local props = node.p or {}
+	props.key = key
+	props.grow = grow
+	node.p = props
+	return node
 end
 
-local function box(ctx: Ctx, kind: string, key: string, role: string, extra: Props?, build: (Ctx) -> { Node }): Node
-	local props: Props = extra or {}
-	props.key, props.role = key, role
-	return ui.node(kind, props, build(sub(ctx, key)))
+local function note(key: string, value: string, grow: number?): Node
+	return keyed(ui.text({ ui.span(value, "muted") }), key, grow)
 end
 
-local function text(key: string, value: string, role: string, extra: Props?): Node
-	local props: Props = extra or {}
-	props.key, props.text, props.role = key, value, role
-	return ui.node("text", props)
+local function button(key: string, label: string, act: string, props: ButtonProps?): Node
+	local p: ButtonProps = props or {}
+	p.key = key
+	p.actions = { click = act }
+	return ui.button(label, p)
 end
 
-local function button(key: string, label: string, action: string, role: string, pressed: boolean?, title: string?): Node
-	local attrs: { [string]: string }? = nil
-	if pressed ~= nil then
-		attrs = { ["aria-pressed"] = if pressed then "true" else "false" }
+local function backButton(label: string, act: string): Node
+	return keyed(ui.row({ button("back", label, act, { variant = "quiet", icon = "arrow-left" }) }), "nav")
+end
+
+local function title(value: string): Node
+	return keyed(ui.text({ ui.span(value, "strong") }), "title")
+end
+
+local function notice(state: State): Node?
+	local message = state.notice
+	if message == nil then
+		return nil
 	end
-	return ui.el("button", { key = key, role = role, text = label, title = title, attrs = attrs, mark = if pressed then "pick" else nil, actions = { click = action } })
+	return keyed(ui.text({ if state.noticeBad then ui.span(message, "error") else message }), "notice")
 end
 
-local function dot(key: string, tone: Model.Tone): Node
-	return ui.el("div", { key = key, role = `automations.dot.{tone}` })
+local function statusBadge(definition: Definition): Node
+	return keyed(ui.badge(if definition.enabled then "Enabled" else "Paused", if definition.enabled then "success" else "muted"), "status")
 end
 
-local function outcomeLine(key: string, outcome: Model.Outcome): Node
-	return ui.node("row", { key = key, role = "automations.result" }, {
-		dot("dot", outcome.tone),
-		text("label", outcome.label, TONE_ROLE[outcome.tone]),
-	})
+-- A group of choices as a joined button strip; the chosen one is pressed.
+local function segment(key: string, choices: { Model.Choice }, current: string, act: string, prefix: string?): Node
+	local buttons = {}
+	for _, choice in choices do
+		table.insert(buttons, button(`o-{choice.id}`, choice.label, `{act}={prefix or ""}{choice.id}`, { size = "sm", on = current == choice.id }))
+	end
+	return ui.node("buttons", { key = key, variant = "joined", size = "sm" }, buttons)
 end
 
-local function segment(ctx: Ctx, key: string, choices: { Model.Choice }, current: string, act: string, prefix: string?): Node
-	return box(ctx, "row", key, "automations.segment", nil, function(_)
-		local out = {}
-		for _, choice in choices do
-			local value = (prefix or "") .. choice.id
-			table.insert(out, button(`o-{choice.id}`, choice.label, `{act}={value}`, "automations.segmentButton", current == choice.id))
-		end
-		return out
-	end)
+local function tabStrip(key: string, items: { { id: string, label: string } }, active: string, variant: string?): Node
+	return ui.node("tabs", { key = key, items = items, active = active, variant = variant })
 end
 
-local function inputNode(ctx: Ctx, state: State, key: string, field: Input.Field, label: string, placeholder: string): Node
+local Field = {}
+
+-- `control` gets the path of the node that holds it, for callers that address the control by path.
+function Field.render(path: string, key: string, props: { label: string, optional: boolean?, help: string? }, control: (string) -> Node): Node
+	return ui.node("field", {
+		key = `f-{key}`,
+		label = if props.optional then `{props.label} (optional)` else props.label,
+		hint = props.help,
+	}, { control(`{path}.f-{key}`) })
+end
+
+local MACHINE_FIELDS = { "cron", "event", "filter", "cwd", "command", "precheck", "base_branch" }
+
+local function inputNode(path: string, state: State, key: string, field: Input.Field, label: string, placeholder: string): Node
 	local p = Input.props(field)
-	state.ids[key] = `{ctx.path}.{key}`
+	state.ids[key] = `{path}.{key}`
+	local mono = false
+	for _, name in MACHINE_FIELDS do
+		if string.find(key, name, 1, true) then
+			mono = true
+		end
+	end
 	return ui.node(if field.multiline then "editor" else "input", {
 		key = key,
-		role = if field.multiline then "automations.editor" else "automations.input",
+		variant = "field",
+		mono = if mono then true else nil,
 		aria = label,
 		placeholder = placeholder,
 		text = p.text,
 		cursor = p.cursor,
 		anchor = p.anchor,
-		mark = if state.focus == key then "pick" else nil,
-	})
-end
-
-local function labelled(ctx: Ctx, key: string, label: string, optional: boolean, help: string?, control: (Ctx) -> Node): Node
-	return box(ctx, "col", `f-{key}`, "automations.field", nil, function(c)
-		local head = { text("label", label, "automations.fieldLabel") }
-		if optional then
-			table.insert(head, text("optional", "Optional", "automations.optional"))
-		end
-		local out = { ui.node("row", { key = "head", role = "automations.fieldHead" }, head), control(c) }
-		if help then
-			table.insert(out, text("help", help, "automations.help"))
-		end
-		return out
-	end)
-end
-
-
-local HEADS: { [string]: string } =
-	{ name = "Name", trigger = "Trigger", next = "Next run", last = "Last run", status = "Status" }
-
-local function statusPill(definition: Definition): Node
-	return text("status", if definition.enabled then "Enabled" else "Paused", "automations.pill", {
-		mark = if definition.enabled then "pick" else nil,
 	})
 end
 
@@ -112,143 +107,73 @@ local function lastRun(state: State, id: string): Model.Run?
 	return Model.runsOf(state.snapshot.runs, id, 1)[1]
 end
 
-local function cell(state: State, column: string, definition: Definition, now: number): Node
-	local role = `automations.col.{column}`
-	if column == "name" then
-		return ui.node("col", { key = column, role = role }, {
-			text("name", definition.name, "automations.name"),
-			text("meta", Model.workspaceLabel(definition.workspace), "automations.secondary"),
-		})
-	elseif column == "trigger" then
+local function resultCell(outcome: Model.Outcome, ago: string?): Cell
+	local spans: { Span | string } = { outcome.label }
+	if ago then
+		table.insert(spans, ui.span(`  {ago}`, "muted"))
+	end
+	return { text = spans, dot = DOT_TONE[outcome.tone] }
+end
+
+local function automationsTable(state: State, shown: { Definition }, now: number): Node
+	local rows: { { Cell } | TableRow } = {}
+	for _, definition in shown do
 		local lines = Model.triggerLines(definition)
 		local more = if #lines > 1 then ` +{#lines - 1} more` else ""
-		return ui.node("col", { key = column, role = role }, {
-			text("kind", lines[1].kind, "automations.name"),
-			text("detail", lines[1].detail .. more, "automations.secondary"),
-		})
-	elseif column == "next" then
-		local label = Model.nextRun(definition, state.snapshot, now)
-		return ui.node("col", { key = column, role = role }, { text("when", label, "automations.value") })
-	elseif column == "last" then
 		local run = lastRun(state, definition.id)
-		if not run then
-			return ui.node("col", { key = column, role = role }, {
-				text("none", "No runs yet", "automations.secondary"),
-			})
-		end
-		return ui.node("col", { key = column, role = role }, {
-			outcomeLine("result", Model.outcome(run)),
-			text("ago", Model.ago(run.at, now), "automations.secondary"),
+		local last: Cell = if run
+			then resultCell(Model.outcome(run), Model.ago(run.at, now))
+			else { ui.span("No runs yet", "muted") }
+		table.insert(rows, {
+			id = definition.id,
+			cells = {
+				{ ui.span(definition.name, "strong"), ui.span(`  {Model.workspaceLabel(definition.workspace)}`, "muted") },
+				{ lines[1].kind, ui.span(`  {lines[1].detail}{more}`, "muted") },
+				{ (Model.nextRun(definition, state.snapshot, now)) },
+				last,
+				{ badge = { text = if definition.enabled then "Enabled" else "Paused", tone = if definition.enabled then "success" else "muted" } },
+			},
 		})
 	end
-	return ui.node("col", { key = column, role = role }, { statusPill(definition) })
-end
-
-local function tableList(ctx: Ctx, state: State, shown: { Definition }, now: number): Node
-	local columns = { "name", "trigger", "next", "last", "status" }
-	return box(ctx, "col", "list", "automations.list", nil, function(_)
-		local out = {}
-		local heads = {}
-		for _, column in columns do
-			table.insert(heads, text(column, HEADS[column], `automations.th automations.col.{column}`))
-		end
-		table.insert(out, ui.node("row", { key = "head", role = "automations.tableHead" }, heads))
-		for _, definition in shown do
-			local cells = {}
-			for _, column in columns do
-				table.insert(cells, cell(state, column, definition, now))
-			end
-			table.insert(out, ui.node("row", {
-				key = `r-{definition.id}`,
-				role = "automations.row",
-				mark = if state.selected == definition.id then "pick" else nil,
-				aria = definition.name,
-				actions = { click = `select={definition.id}` },
-			}, cells))
-		end
-		if #shown == 0 then
-			table.insert(out, text("none", "No automations match your search.", "automations.emptyRow"))
-		end
-		table.insert(out, ui.node("row", { key = "footer", role = "automations.listFooter" }, {
-			text("count", `{#shown} of {#state.snapshot.definitions} automations`, "automations.note"),
-		}))
-		return out
-	end)
-end
-
-local function meta(key: string, label: string, values: { Node }): Node
-	return ui.node("row", { key = key, role = "automations.metaRow" }, {
-		text("label", label, "automations.metaLabel"),
-		ui.node("col", { key = "value", role = "automations.metaValue" }, values),
-	})
-end
-
-local RUN_COLUMNS = {
-	{ id = "run", head = "Run" },
-	{ id = "workspace", head = "Workspace" },
-	{ id = "trigger", head = "Trigger" },
-	{ id = "duration", head = "Duration" },
-	{ id = "result", head = "Result" },
-}
-
-local function workspaceOf(state: State, run: Model.Run): string
-	local definition = Model.find(state.snapshot.definitions, run.automationId)
-	return if definition then Model.workspaceLabel(definition.workspace) else "-"
-end
-
-local function runsTable(state: State, now: number, only: string?): Node
-	local runs = if only then Model.runsOf(state.snapshot.runs, only, RUNS_SHOWN) else state.snapshot.runs
-	local heads = {}
-	for _, column in RUN_COLUMNS do
-		if only == nil or column.id ~= "workspace" then
-			table.insert(heads, text(column.id, if only and column.id == "run" then "Started" else column.head, `automations.th automations.runCol.{column.id}`))
-		end
-	end
-	local out = {
-		ui.node("row", { key = "summary", role = "automations.runsSummary" }, {
-			text("title", "Run history", "automations.h3", { grow = 1 }),
-			text("count", Model.runSummary(runs), "automations.note"),
-		}),
-		ui.node("row", { key = "head", role = "automations.tableHead" }, heads),
+	local columns: { Col } = {
+		{ id = "name", head = "Name", grow = 2 },
+		{ id = "trigger", head = "Trigger", grow = 2 },
+		{ id = "next", head = "Next run", grow = 1, priority = -1 },
+		{ id = "last", head = "Last run", grow = 2, priority = -1 },
+		{ id = "status", head = "Status" },
 	}
+	return keyed(ui.table(columns, rows, { selectable = true, selected = state.selected, empty = "No automations match your search." }), "list")
+end
+
+local function runsCard(state: State, now: number, only: string?): Node
+	local runs = if only then Model.runsOf(state.snapshot.runs, only, RUNS_SHOWN) else state.snapshot.runs
+	local rows: { { Cell } | TableRow } = {}
 	for index, run in runs do
 		if index > RUNS_SHOWN then
 			break
 		end
-		local cells = {
-			ui.node("col", { key = "run", role = "automations.runCol.run" }, if only then {
-				text("when", Model.when(run.at, now), "automations.name"),
-			} else {
-				text("name", run.automationName, "automations.name"),
-				text("when", Model.when(run.at, now), "automations.secondary"),
-			}),
+		local when = Model.when(run.at, now)
+		local cells: { Cell } = {
+			if only then { when } else { ui.span(run.automationName, "strong"), ui.span(`  {when}`, "muted") },
 		}
 		if only == nil then
-			table.insert(cells, text("workspace", workspaceOf(state, run), "automations.value automations.runCol.workspace"))
+			local definition = Model.find(state.snapshot.definitions, run.automationId)
+			table.insert(cells, { if definition then Model.workspaceLabel(definition.workspace) else "-" })
 		end
-		table.insert(cells, text("trigger", Model.triggerLabel(run.trigger), "automations.value automations.runCol.trigger"))
-		table.insert(cells, text("duration", Model.duration(run) or "-", "automations.value automations.runCol.duration"))
-		table.insert(cells, ui.node("col", { key = "result", role = "automations.runCol.result" }, {
-			outcomeLine("outcome", Model.outcome(run)),
-		}))
-		table.insert(out, ui.node("row", {
-			key = `run-{run.id}`,
-			role = "automations.runRow",
-			aria = `{run.automationName}, {Model.when(run.at, now)}`,
-			actions = { click = `open-run={run.id}` },
-		}, cells))
+		table.insert(cells, { Model.triggerLabel(run.trigger) })
+		table.insert(cells, { Model.duration(run) or "-" })
+		table.insert(cells, resultCell(Model.outcome(run), nil))
+		table.insert(rows, { id = run.id, cells = cells })
 	end
-	if #runs == 0 then
-		table.insert(out, text("none", "No runs yet. Runs appear here after an automation starts.", "automations.emptyRow"))
+	local columns: { Col } = { { id = "run", head = if only then "Started" else "Run", grow = 2 } }
+	if only == nil then
+		table.insert(columns, { id = "workspace", head = "Workspace", grow = 1, priority = -1 })
 	end
-	return ui.node("col", { key = "runs", role = "automations.runsPanel" }, out)
-end
-
-local function metaCell(key: string, label: string, value: string): Node
-	return ui.node("col", { key = key, role = "automations.metaCell" }, {
-		text("label", label, "automations.kicker"),
-		text("value", value, "automations.value"),
-	})
+	table.insert(columns, { id = "trigger", head = "Trigger", grow = 1 })
+	table.insert(columns, { id = "duration", head = "Duration", priority = -1 })
+	table.insert(columns, { id = "result", head = "Result" })
+	local list = keyed(ui.table(columns, rows, { selectable = true, empty = "No runs yet. Runs appear here after an automation starts." }), "list")
+	return ui.card("Run history", { list }, { key = "runs", icon = "clock", meta = { ui.span(Model.runSummary(runs), "muted") } })
 end
 
 local function runDetail(state: State, run: Model.Run, now: number): Node
@@ -256,226 +181,211 @@ local function runDetail(state: State, run: Model.Run, now: number): Node
 	local agentId = if definition then definition.agent else "command"
 	local outcome = Model.outcome(run)
 	local live = run.pane ~= nil and (run.phase == "launched" or (run.phase == "exited" and run.status ~= nil and run.status ~= 0))
-	local head = {
-		outcomeLine("outcome", outcome),
-	}
+	local actions = { keyed(ui.badge(outcome.label, BADGE_TONE[outcome.tone]), "outcome") }
 	if live then
-		table.insert(head, button("session", "Open session", "open-session", "automations.button"))
+		table.insert(actions, button("session", "Open session", "open-session", { icon = "terminal" }))
 	end
+	local nodes = {
+		backButton(if state.backTo == "detail" then run.automationName else "Runs", "back"),
+		keyed(ui.row({
+			keyed(ui.col({ title(run.automationName), note("subtitle", `Run details · {Model.when(run.at, now)}`) }), "titles", 1),
+			keyed(ui.row(actions), "actions"),
+		}), "head"),
+	}
+	local banner = notice(state)
+	if banner then
+		table.insert(nodes, banner)
+	end
+	local session = run.session
+	table.insert(nodes, ui.card("Run", {
+		ui.kv({
+			{ { "Started" }, { Model.when(run.at, now) } },
+			{ { "Duration" }, { Model.duration(run) or "Running" } },
+			{ { "Trigger" }, { Model.triggerLabel(run.trigger) } },
+			{ { "Agent" }, { Model.label(Model.AGENTS, agentId) } },
+			{ { "Session" }, { ui.span(session, "mono") } },
+		}),
+	}, { key = "meta", icon = "info" }))
 	local problem = run.detail
 	if problem == nil and run.status ~= nil and run.status ~= 0 then
 		problem = `The program exited with status {run.status}.`
 	end
-	local body = {}
 	if problem ~= nil and outcome.tone ~= "ok" and outcome.tone ~= "info" then
-		table.insert(body, ui.node("col", { key = "problem", role = "automations.problems" }, {
-			text("v", problem, "automations.problem"),
-		}))
+		table.insert(nodes, ui.card("Problem", { ui.text({ problem }) }, { key = "problem", icon = "warn", tone = "warning" }))
 	end
 	local captured = state.output
 	local content: Node
 	if captured ~= nil and captured ~= "" then
 		content = if agentId == "command" then ui.code(captured) else ui.md(captured)
 	elseif outcome.tone == "info" then
-		content = text("none", "The output appears here when the run ends.", "automations.secondary")
+		content = ui.text({ ui.span("The output appears here when the run ends.", "muted") })
 	else
-		content = text("none", "No output was saved for this run.", "automations.secondary")
+		content = ui.text({ ui.span("No output was saved for this run.", "muted") })
 	end
-	table.insert(body, ui.node("col", { key = "output", role = "automations.output" }, {
-		text("title", "Output", "automations.h3"),
-		ui.node("col", { key = "text", role = "automations.outputText" }, { content }),
-	}))
-	local nodes = {
-		ui.node("row", { key = "nav", role = "automations.nav" }, {
-			button("back", if state.backTo == "detail" then `← {run.automationName}` else "← Runs", "back", "automations.backButton"),
-		}),
-		ui.node("row", { key = "head", role = "automations.head" }, {
-			ui.node("col", { key = "titles", role = "automations.titles", grow = 1 }, {
-				text("title", run.automationName, "automations.title"),
-				text("subtitle", `Run details · {Model.when(run.at, now)}`, "automations.secondary"),
-			}),
-			ui.node("row", { key = "actions", role = "automations.actions" }, head),
-		}),
-	}
-	if state.notice then
-		table.insert(nodes, text("notice", state.notice, if state.noticeBad then "automations.error" else "automations.noticeText"))
+	table.insert(nodes, ui.card("Output", { content }, { key = "output", icon = "terminal" }))
+	return Page.render(nodes)
+end
+
+local function promptLines(value: string): Node
+	local lines = {}
+	for index, line in string.split(value, "\n") do
+		table.insert(lines, keyed(ui.text({ if line == "" then " " else line }), `l{index}`))
 	end
-	table.insert(nodes, ui.node("col", { key = "card", role = "automations.formCard" }, {
-		ui.node("row", { key = "meta", role = "automations.runMeta" }, {
-			metaCell("started", "STARTED", Model.when(run.at, now)),
-			metaCell("duration", "DURATION", Model.duration(run) or "Running"),
-			metaCell("trigger", "TRIGGER", Model.triggerLabel(run.trigger)),
-			metaCell("agent", "AGENT", Model.label(Model.AGENTS, agentId)),
-			metaCell("session", "SESSION", run.session),
-		}),
-		ui.node("col", { key = "body", role = "automations.runBody" }, body),
-	}))
-	return ui.node("col", { key = "page", role = "automations.page" }, nodes)
+	return keyed(ui.lines(lines), "description")
 end
 
 local function automationDetail(state: State, definition: Definition, now: number): Node
 	local isCommand = definition.instructions == ""
 	local full = if isCommand then table.concat(definition.command, " ") else definition.instructions
 	local clipped = Model.summary(full) ~= full
-	local triggers = {}
-	for index, line in Model.triggerLines(definition) do
-		table.insert(triggers, text(`t{index}`, `{line.kind} · {line.detail}`, "automations.value"))
+	local pairs: { { Spans } } = {}
+	local lines = Model.triggerLines(definition)
+	for index, line in lines do
+		table.insert(pairs, { { if #lines > 1 then `Trigger {index}` else "Trigger" }, { line.kind, ui.span(`  {line.detail}`, "muted") } })
 	end
 	local agent = Model.label(Model.AGENTS, definition.agent)
 	if definition.model ~= "" then
 		agent ..= ` · {definition.model}`
 	end
 	local run = lastRun(state, definition.id)
-	local body: Node
+	table.insert(pairs, { { "Workspace" }, { Model.workspaceLabel(definition.workspace) } })
+	table.insert(pairs, { { "Agent" }, { agent } })
+	table.insert(pairs, { { "Next run" }, { (Model.nextRun(definition, state.snapshot, now)) } })
+	table.insert(pairs, { { "Last run" }, { if run then `{Model.outcome(run).label}, {Model.ago(run.at, now)}` else "Never" } })
+	local body: { Node }
 	if state.detailTab == "runs" then
-		body = runsTable(state, now, definition.id)
+		body = { runsCard(state, now, definition.id) }
 	else
-		body = ui.node("col", { key = "card", role = "automations.formCard" }, {
-			ui.node("col", { key = "details", role = "automations.section" }, {
-				meta("trigger", if #triggers > 1 then "Triggers" else "Trigger", triggers),
-				meta("workspace", "Workspace", { text("v", Model.workspaceLabel(definition.workspace), "automations.value") }),
-				meta("agent", "Agent", { text("v", agent, "automations.value") }),
-				meta("next", "Next run", { text("v", Model.nextRun(definition, state.snapshot, now), "automations.value") }),
-				meta("last", "Last run", {
-					text("v", if run then `{Model.outcome(run).label}, {Model.ago(run.at, now)}` else "Never", "automations.value"),
-				}),
-			}),
-			ui.node("col", { key = "prompt", role = "automations.section" }, {
-				ui.node("row", { key = "head", role = "automations.sectionTitle" }, {
-					text("title", if isCommand then "Command" else "Instructions", "automations.h3"),
-					if clipped then button("more", if state.promptOpen then "Show less" else "Show more", "toggle-prompt", "automations.linkButton") else text("none", "", "automations.note"),
-				}),
-				text("description", if state.promptOpen then full else Model.summary(full), if state.promptOpen then "automations.description automations.descriptionOpen" else "automations.description"),
-			}),
-		})
+		local prompt: { Node } = { if state.promptOpen then promptLines(full) else keyed(ui.text({ Model.summary(full) }), "description") }
+		local cardProps: CardProps = { key = "prompt", icon = if isCommand then "terminal" else "list" }
+		if clipped then
+			table.insert(prompt, button("more", if state.promptOpen then "Show less" else "Show more", "toggle-prompt", { variant = "quiet", size = "sm" }))
+			cardProps["end"] = "main.prompt.more"
+		end
+		body = {
+			ui.card("Details", { ui.kv(pairs) }, { key = "details", icon = "info" }),
+			ui.card(if isCommand then "Command" else "Instructions", prompt, cardProps),
+		}
 	end
 	local nodes = {
-		ui.node("row", { key = "nav", role = "automations.nav" }, {
-			button("back", "← Automations", "back", "automations.backButton"),
-		}),
-		ui.node("row", { key = "head", role = "automations.head" }, {
-			ui.node("row", { key = "titles", role = "automations.titleLine", grow = 1 }, {
-				text("title", definition.name, "automations.title"),
-				statusPill(definition),
-			}),
-			ui.node("row", { key = "actions", role = "automations.actions" }, {
-				button("run", "Run now", "run", "automations.primaryButton"),
-				button("edit", "Edit", "edit", "automations.button"),
-				button("toggle", if definition.enabled then "Pause" else "Enable", "toggle", "automations.button"),
-			}),
-		}),
-		ui.node("row", { key = "tabs", role = "automations.tabs" }, {
-			button("t-overview", "Overview", "detail-tab=overview", "automations.tab", state.detailTab == "overview"),
-			button("t-runs", "Runs", "detail-tab=runs", "automations.tab", state.detailTab == "runs"),
-		}),
+		backButton("Automations", "back"),
+		keyed(ui.row({
+			keyed(ui.row({ title(definition.name), statusBadge(definition) }), "titles", 1),
+			keyed(ui.row({
+				button("run", "Run now", "run", { variant = "primary", icon = "play" }),
+				button("edit", "Edit", "edit"),
+				button("toggle", if definition.enabled then "Pause" else "Enable", "toggle", { icon = if definition.enabled then "pause" else "power" }),
+			}), "actions"),
+		}), "head"),
+		tabStrip("tabs", { { id = "overview", label = "Overview" }, { id = "runs", label = "Runs" } }, state.detailTab),
 	}
-	if state.notice then
-		table.insert(nodes, text("notice", state.notice, if state.noticeBad then "automations.error" else "automations.noticeText"))
+	local banner = notice(state)
+	if banner then
+		table.insert(nodes, banner)
 	end
-	table.insert(nodes, body)
-	return ui.node("col", { key = "page", role = "automations.page" }, nodes)
+	for _, node in body do
+		table.insert(nodes, node)
+	end
+	return Page.render(nodes)
 end
 
-local function emptyState(): Node
-	return ui.node("col", { key = "empty", role = "automations.empty" }, {
-		text("title", "No automations yet", "automations.emptyTitle"),
-		text("body", "Create one to run an agent on a schedule or when an event arrives.", "automations.secondary"),
-		button("create", "New automation", "new", "automations.primaryButton"),
-	})
-end
-
-local function overview(ctx: Ctx, state: State, now: number): Node
+local function overview(state: State, now: number): Node
 	local snapshot = state.snapshot
-	local children = {
-		ui.node("row", { key = "head", role = "automations.head" }, {
-			ui.node("col", { key = "titles", role = "automations.titles", grow = 1 }, {
-				ui.node("row", { key = "line", role = "automations.titleLine" }, {
-					text("title", "Automations", "automations.title"),
-					text("count", tostring(#snapshot.definitions), "automations.count"),
-				}),
-				text("subtitle", "Run agents on a schedule or in response to events.", "automations.secondary"),
-			}),
-			button("new", "New automation", "new", "automations.primaryButton"),
-		}),
+	local nodes = {
+		keyed(ui.row({
+			keyed(ui.col({
+				keyed(ui.row({ title("Automations"), keyed(ui.badge(tostring(#snapshot.definitions), "muted"), "count") }), "line"),
+				note("subtitle", "Run agents on a schedule or in response to events."),
+			}), "titles", 1),
+			button("new", "New automation", "new", { variant = "primary", icon = "plus" }),
+		}), "head"),
 	}
 	if #snapshot.errors > 0 then
-		local lines = {}
+		local problems = {}
 		for index, message in snapshot.errors do
 			if index > 3 then
-				table.insert(lines, text("more", `{#snapshot.errors - 3} more config problems`, "automations.note"))
+				table.insert(problems, note("more", `{#snapshot.errors - 3} more config problems`))
 				break
 			end
-			table.insert(lines, text(`e{index}`, message, "automations.problem"))
+			table.insert(problems, keyed(ui.text({ message }), `e{index}`))
 		end
-		table.insert(children, ui.node("col", { key = "problems", role = "automations.problems" }, lines))
+		table.insert(nodes, ui.card("Config problems", problems, { key = "problems", icon = "warn", tone = "warning" }))
 	end
-	table.insert(children, ui.node("row", { key = "tabs", role = "automations.tabs" }, {
-		button("t-automations", "Automations", "tab=automations", "automations.tab", state.tab == "automations"),
-		button("t-runs", "Runs", "tab=runs", "automations.tab", state.tab == "runs"),
-	}))
-	if state.notice then
-		table.insert(children, text("notice", state.notice, if state.noticeBad then "automations.error" else "automations.noticeText"))
+	table.insert(nodes, tabStrip("tabs", { { id = "automations", label = "Automations" }, { id = "runs", label = "Runs" } }, state.tab))
+	local banner = notice(state)
+	if banner then
+		table.insert(nodes, banner)
 	end
 	if state.tab == "runs" then
-		table.insert(children, runsTable(state, now))
+		table.insert(nodes, runsCard(state, now))
 	elseif #snapshot.definitions == 0 then
-		table.insert(children, emptyState())
+		table.insert(nodes, ui.node("empty", {
+			key = "empty",
+			variant = "center",
+			icon = "bolt",
+			title = "No automations yet",
+			text = "Create one to run an agent on a schedule or when an event arrives.",
+		}, { button("create", "New automation", "new", { variant = "primary", icon = "plus" }) }))
 	else
 		local shown = Model.visible(snapshot.definitions, state.search.text, state.filter)
-		table.insert(children, box(ctx, "row", "toolbar", "automations.toolbar", nil, function(c)
-			return {
-				box(c, "row", "tools", "automations.toolGroup", nil, function(t)
-					return {
-						inputNode(t, state, "search", state.search, "Search automations", "Search automations…"),
-						segment(t, "filter", Model.FILTERS, state.filter, "filter"),
-					}
-				end),
-				text("health", Model.healthLabel(snapshot.health), "automations.note"),
-			}
-		end))
-		table.insert(children, ui.node("row", { key = "layout", role = "automations.layout" }, { tableList(ctx, state, shown, now) }))
+		local search = inputNode("main.toolbar", state, "search", state.search, "Search automations", "Search")
+		search.p.icon = "search"
+		search.p.grow = 1
+		search.p.max = { w = "36ch" }
+		table.insert(nodes, keyed(ui.row({
+			search,
+			tabStrip("filter", Model.FILTERS, state.filter, "segmented"),
+		}), "toolbar"))
+		table.insert(nodes, automationsTable(state, shown, now))
+		table.insert(nodes, keyed(ui.row({
+			note("count", `{#shown} of {#snapshot.definitions} automations`, 1),
+			note("health", Model.healthLabel(snapshot.health)),
+		}), "footer"))
 	end
-	return ui.node("col", { key = "page", role = "automations.page" }, children)
+	return Page.render(nodes)
 end
 
-local function triggerCard(ctx: Ctx, state: State, draft: Draft, trigger: Model.DraftTrigger): Node
+local function triggerBlock(path: string, state: State, draft: Draft, trigger: Model.DraftTrigger): Node
 	local fields = draft.fields
-	return box(ctx, "col", `trigger-{trigger.uid}`, "automations.triggerBox", nil, function(c)
-		return {
-			ui.node("row", { key = "head", role = "automations.triggerHead" }, {
-				text("title", "Trigger", "automations.fieldLabel", { grow = 1 }),
-				button("remove", "×", `remove-trigger={trigger.uid}`, "automations.iconButton", nil, "Remove trigger"),
-			}),
-			segment(c, "source", Model.SOURCES, trigger.source, "trigger-source", `{trigger.uid}:`),
-			box(c, "col", "body", "automations.triggerFields", nil, function(b)
-				if trigger.source == "schedule" then
-					local key = Model.triggerField(trigger.uid, "cron")
-					return {
-						labelled(b, key, "Cron expression", false, "Five fields, local time: minute hour day month weekday.", function(f)
-							return inputNode(f, state, key, fields[key], "Cron expression", "0 9 * * 1-5")
-						end),
-					}
-				end
-				local eventKey = Model.triggerField(trigger.uid, "event")
-				local filterKey = Model.triggerField(trigger.uid, "filter")
-				return {
-					labelled(b, eventKey, "Event", false, nil, function(f)
-						return inputNode(f, state, eventKey, fields[eventKey], "Event", "pull_request.opened")
-					end),
-					labelled(b, filterKey, "Filter", true, "key=value terms separated by spaces; a value may end with *. Blank matches any event.", function(f)
-						return inputNode(f, state, filterKey, fields[filterKey], "Filter", "repo=example-org/example-repo")
-					end),
-				}
+	local here = `{path}.trigger-{trigger.uid}`
+	local body: { Node }
+	if trigger.source == "schedule" then
+		local key = Model.triggerField(trigger.uid, "cron")
+		body = {
+			Field.render(`{here}.body`, key, { label = "Cron expression", help = "Five fields, local time: minute hour day month weekday." }, function(p)
+				return inputNode(p, state, key, fields[key], "Cron expression", "0 9 * * 1-5")
 			end),
 		}
-	end)
+	else
+		local eventKey = Model.triggerField(trigger.uid, "event")
+		local filterKey = Model.triggerField(trigger.uid, "filter")
+		body = {
+			Field.render(`{here}.body`, eventKey, { label = "Event" }, function(p)
+				return inputNode(p, state, eventKey, fields[eventKey], "Event", "pull_request.opened")
+			end),
+			Field.render(`{here}.body`, filterKey, {
+				label = "Filter",
+				optional = true,
+				help = "key=value terms separated by spaces; a value may end with *. Blank matches any event.",
+			}, function(p)
+				return inputNode(p, state, filterKey, fields[filterKey], "Filter", "repo=example-org/example-repo")
+			end),
+		}
+	end
+	return keyed(ui.col({
+		keyed(ui.row({
+			keyed(ui.text({ ui.span("Trigger", "strong") }), "label", 1),
+			button("remove", "", `remove-trigger={trigger.uid}`, { icon = "trash", variant = "quiet", size = "sm", title = "Remove trigger" }),
+		}), "head"),
+		segment("source", Model.SOURCES, trigger.source, "trigger-source", `{trigger.uid}:`),
+		keyed(ui.col(body), "body"),
+	}), `trigger-{trigger.uid}`)
 end
 
-local function editor(ctx: Ctx, state: State, draft: Draft): Node
-	ctx = sub(sub(ctx, "card"), "grid")
+local function editor(state: State, draft: Draft): Node
 	local fields = draft.fields
-	local function input(c: Ctx, key: string, label: string, placeholder: string): Node
-		return inputNode(c, state, key, fields[key], label, placeholder)
+	local function input(path: string, key: string, label: string, placeholder: string): Node
+		return inputNode(path, state, key, fields[key], label, placeholder)
 	end
 	local hasEvent = false
 	for _, trigger in draft.triggers do
@@ -483,119 +393,105 @@ local function editor(ctx: Ctx, state: State, draft: Draft): Node
 			hasEvent = true
 		end
 	end
-	local main = box(ctx, "col", "main", "automations.formMain", nil, function(c)
-		local out = {
-			text("kicker", "TASK DEFINITION", "automations.kicker"),
-			labelled(c, "name", "Name", false, nil, function(f)
-				return input(f, "name", "Name", "e.g. Review changes")
-			end),
-		}
-		if draft.agent ~= "command" then
-			table.insert(out, labelled(c, "instructions", "Instructions", false, "Describe the task, the expected output, and when the agent should stop.", function(f)
-				return input(f, "instructions", "Instructions", "What should the agent do?")
-			end))
-		end
-		table.insert(out, box(c, "col", "triggers", "automations.formSection", nil, function(t)
-			return {
-				text("title", "Triggers", "automations.fieldLabel"),
-				box(t, "col", "cards", "automations.triggerList", nil, function(cards)
-					local items = {}
-					for _, trigger in draft.triggers do
-						table.insert(items, triggerCard(cards, state, draft, trigger))
-					end
-					table.insert(items, button("add", "Add trigger", "add-trigger", "automations.button"))
-					table.insert(items, text("help", if hasEvent then Model.EVENT_NOTE else "Any matching trigger starts a run. With none, only Run now starts it.", "automations.help"))
-					return items
-				end),
-			}
+
+	local task = "main.form.task"
+	local taskNodes = {
+		Field.render(task, "name", { label = "Name" }, function(p)
+			return input(p, "name", "Name", "e.g. Review changes")
+		end),
+	}
+	if draft.agent ~= "command" then
+		table.insert(taskNodes, Field.render(task, "instructions", { label = "Instructions", help = "Describe the task, the expected output, and when the agent should stop." }, function(p)
+			return input(p, "instructions", "Instructions", "What should the agent do?")
 		end))
-		table.insert(out, box(c, "col", "workspaceBox", "automations.formSection", nil, function(w)
-			return {
-				text("title", "Workspace", "automations.fieldLabel"),
-				box(w, "col", "items", "automations.triggerList", nil, function(items)
-					local parts = { segment(items, "workspace", Model.WORKSPACES, draft.workspace, "workspace") }
-					if draft.workspace ~= "none" then
-						table.insert(parts, labelled(items, "cwd", if draft.workspace == "worktree" then "Repository path" else "Working directory", false, nil, function(f)
-							return input(f, "cwd", "Directory", "/path/to/example-project")
-						end))
-					end
-					if draft.workspace == "worktree" then
-						table.insert(parts, labelled(items, "base_branch", "Base branch", true, "Each run gets its own git worktree; existing worktrees are never removed.", function(f)
-							return input(f, "base_branch", "Base branch", "Current branch")
-						end))
-					end
-					return parts
-				end),
-			}
-		end))
-		return out
-	end)
-	local settings = box(ctx, "col", "settings", "automations.formSettings", nil, function(c)
-		local out = {
-			text("kicker", "EXECUTION SETTINGS", "automations.kicker"),
-			ui.node("col", { key = "agent", role = "automations.field" }, {
-				text("label", "Agent", "automations.fieldLabel"),
-				segment(c, "agentChoice", Model.AGENTS, draft.agent, "agent"),
-			}),
-		}
-		if draft.agent ~= "command" then
-			table.insert(out, labelled(c, "model", "Model", true, "Leave blank for the agent's default.", function(f)
-				return input(f, "model", "Model", "Agent default")
-			end))
-		end
-		if draft.agent == "command" then
-			table.insert(out, labelled(c, "command", "Command", false, "The program and its arguments as a JSON array.", function(f)
-				return input(f, "command", "Command", '["program", "argument"]')
-			end))
-		end
-		table.insert(out, labelled(c, "precheck", "Precheck", true, "Automatic runs only, as a JSON array. Run now skips it.", function(f)
-			return input(f, "precheck", "Precheck", '["program", "argument"]')
-		end))
-		if Model.trim(fields.precheck.text) ~= "" then
-			table.insert(out, labelled(c, "precheck_timeout", "Precheck timeout", false, "Seconds.", function(f)
-				return input(f, "precheck_timeout", "Precheck timeout", "60")
-			end))
-		end
-		table.insert(out, labelled(c, "grace", "Missed-run grace", false, "Minutes a missed schedule or event may still start.", function(f)
-			return input(f, "grace", "Missed-run grace", "60")
-		end))
-		table.insert(out, ui.node("col", { key = "permissions", role = "automations.formSection" }, {
-			text("title", "Permissions", "automations.fieldLabel"),
-			text("note", Model.PERMISSION_NOTE, "automations.permissionNote"),
-		}))
-		return out
-	end)
-	local editing = draft.id ~= nil
-	local footer = { ui.node("row", { key = "buttons", role = "automations.actions" }, {
-		button("cancel", "Cancel", "cancel", "automations.button"),
-		button("save", if editing then "Save changes" else "Create automation", "save", "automations.primaryButton"),
-	}) }
-	if state.error then
-		table.insert(footer, 1, text("error", state.error, "automations.error", { grow = 1 }))
 	end
-	return ui.node("col", { key = "page", role = "automations.page" }, {
-		ui.node("row", { key = "nav", role = "automations.nav" }, {
-			button("back", "← Automations", "cancel", "automations.backButton"),
-		}),
-		ui.node("row", { key = "head", role = "automations.head" }, {
-			ui.node("col", { key = "titles", role = "automations.titles", grow = 1 }, {
-				text("title", if editing then "Edit automation" else "New automation", "automations.title"),
-				text("subtitle", "Define when your agent runs and what it should do.", "automations.secondary"),
-			}),
-		}),
-		ui.node("col", { key = "card", role = "automations.formCard" }, {
-			ui.node("row", { key = "grid", role = "automations.formGrid" }, { main, settings }),
-			ui.node("row", { key = "footer", role = "automations.formFooter" }, footer),
-		}),
-	})
+	local triggerPath = `{task}.triggers`
+	local triggerNodes = {}
+	for _, trigger in draft.triggers do
+		table.insert(triggerNodes, triggerBlock(triggerPath, state, draft, trigger))
+	end
+	table.insert(triggerNodes, button("add", "Add trigger", "add-trigger", { icon = "plus", size = "sm" }))
+	table.insert(triggerNodes, note("help", if hasEvent then Model.EVENT_NOTE else "Any matching trigger starts a run. With none, only Run now starts it."))
+	table.insert(taskNodes, keyed(ui.rule("Triggers"), "triggers-rule"))
+	table.insert(taskNodes, keyed(ui.col(triggerNodes), "triggers"))
+
+	local workspacePath = `{task}.workspace`
+	local workspaceNodes = { segment("choice", Model.WORKSPACES, draft.workspace, "workspace") }
+	if draft.workspace ~= "none" then
+		table.insert(workspaceNodes, Field.render(workspacePath, "cwd", { label = if draft.workspace == "worktree" then "Repository path" else "Working directory" }, function(p)
+			return input(p, "cwd", "Directory", "/path/to/example-project")
+		end))
+	end
+	if draft.workspace == "worktree" then
+		table.insert(workspaceNodes, Field.render(workspacePath, "base_branch", {
+			label = "Base branch",
+			optional = true,
+			help = "Each run gets its own git worktree; existing worktrees are never removed.",
+		}, function(p)
+			return input(p, "base_branch", "Base branch", "Current branch")
+		end))
+	end
+	table.insert(taskNodes, keyed(ui.rule("Workspace"), "workspace-rule"))
+	table.insert(taskNodes, keyed(ui.col(workspaceNodes), "workspace"))
+
+	local settings = "main.form.settings"
+	local settingsNodes = {
+		Field.render(settings, "agent", { label = "Agent" }, function(_)
+			return segment("choice", Model.AGENTS, draft.agent, "agent")
+		end),
+	}
+	if draft.agent ~= "command" then
+		table.insert(settingsNodes, Field.render(settings, "model", { label = "Model", optional = true, help = "Leave blank for the agent's default." }, function(p)
+			return input(p, "model", "Model", "Agent default")
+		end))
+	else
+		table.insert(settingsNodes, Field.render(settings, "command", { label = "Command", help = "The program and its arguments as a JSON array." }, function(p)
+			return input(p, "command", "Command", '["program", "argument"]')
+		end))
+	end
+	table.insert(settingsNodes, Field.render(settings, "precheck", { label = "Precheck", optional = true, help = "Automatic runs only, as a JSON array. Run now skips it." }, function(p)
+		return input(p, "precheck", "Precheck", '["program", "argument"]')
+	end))
+	if Model.trim(fields.precheck.text) ~= "" then
+		table.insert(settingsNodes, Field.render(settings, "precheck_timeout", { label = "Precheck timeout", help = "Seconds." }, function(p)
+			return input(p, "precheck_timeout", "Precheck timeout", "60")
+		end))
+	end
+	table.insert(settingsNodes, Field.render(settings, "grace", { label = "Missed-run grace", help = "Minutes a missed schedule or event may still start." }, function(p)
+		return input(p, "grace", "Missed-run grace", "60")
+	end))
+	table.insert(settingsNodes, keyed(ui.rule("Permissions"), "permissions-rule"))
+	table.insert(settingsNodes, note("permissions", Model.PERMISSION_NOTE))
+
+	local editing = draft.id ~= nil
+	local nodes = {
+		backButton("Automations", "cancel"),
+		keyed(ui.row({
+			keyed(ui.col({
+				title(if editing then "Edit automation" else "New automation"),
+				note("subtitle", "Define when your agent runs and what it should do."),
+			}), "titles", 1),
+			keyed(ui.row({
+				button("cancel", "Cancel", "cancel"),
+				button("save", if editing then "Save changes" else "Create automation", "save", { variant = "primary" }),
+			}), "actions"),
+		}), "head"),
+	}
+	if state.error then
+		table.insert(nodes, keyed(ui.text({ ui.span(state.error, "error") }), "error"))
+	end
+
+	local taskCard = ui.card("Task", taskNodes, { key = "task", icon = "list", grow = 1, basis = 0 })
+	local settingsCard = ui.card("Execution", settingsNodes, { key = "settings", icon = "bolt", grow = 1, basis = 0 })
+	table.insert(nodes, ui.node("row", { key = "form", gap = "lg", align = "start" }, { taskCard, settingsCard }))
+	return Page.render(nodes)
 end
 
 function View.render(state: State, now: number): BlockView
 	state.ids = {}
-	local root: Ctx = { path = "main", ids = state.ids }
 	local draft = state.draft
 	if state.mode == "editor" and draft then
-		return { main = editor(root, state, draft) }
+		return { main = editor(state, draft) }
 	end
 	local run = if state.mode == "run" then Model.findRun(state.snapshot.runs, state.runId) else nil
 	if run then
@@ -605,7 +501,7 @@ function View.render(state: State, now: number): BlockView
 	if definition then
 		return { main = automationDetail(state, definition, now) }
 	end
-	return { main = overview(root, state, now) }
+	return { main = overview(state, now) }
 end
 
 return View

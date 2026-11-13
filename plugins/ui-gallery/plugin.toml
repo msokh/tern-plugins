@@ -1,0 +1,13 @@
+schema = 1
+id = "ui-gallery"
+name = "UI Gallery"
+version = "0.1.0"
+description = "Every native UI builder Tern gives plugins, grouped by the categories of a design-system catalog, to check a plugin's UI against."
+host = "host.luau"
+window = "window.luau"
+styles = ["ui/ui.css"]
+
+[[blocks]]
+id = "gallery"
+title = "UI Gallery"
+palette = false
