@@ -33,10 +33,4 @@ Never edit `plugins/<name>/ui/` by hand. `scripts/preview.mjs <name>` renders a 
 
 Nothing private belongs here: no personal or organization names, no absolute home paths, no secrets. Plugins read their real settings from files outside the repository.
 
-`scripts/check-public.sh` enforces it. Enable the hooks once per clone:
-
-```sh
-git config core.hooksPath .githooks
-```
-
-The hooks check staged files and commit messages; CI checks the whole history. The list of names to reject lives outside the repository, in `~/.config/tern-plugins/denylist` locally (one name per line) and in the `TERN_PLUGINS_DENYLIST` Actions secret. The check fails without it. It needs `gitleaks` installed.
+The owner checks this locally before each commit and push. CI does not.
