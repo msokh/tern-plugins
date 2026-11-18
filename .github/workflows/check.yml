@@ -1,0 +1,31 @@
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install luau
+        run: |
+          curl -sSfL -o luau.zip https://github.com/luau-lang/luau/releases/download/0.745/luau-ubuntu.zip
+          sudo unzip -o luau.zip luau -d /usr/local/bin
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Automations tests
+        run: |
+          luau plugins/automations/tests/run.luau
+          luau plugins/automations/tests/ui.luau
+          node --test plugins/automations/tests/receiver.test.mjs
+      - name: Shared UI
+        run: node scripts/ui.mjs check

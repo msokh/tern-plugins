@@ -1,0 +1,10 @@
+{
+  "runs:nightly-review": [
+    { "key": "202611100300", "trigger": "scheduled", "at": "$NOW-3600", "endedAt": "$NOW-3312", "session": "automation nightly-review", "phase": "exited", "status": 0 },
+    { "key": "202611090300", "trigger": "scheduled", "at": "$NOW-90000", "endedAt": "$NOW-89880", "session": "automation nightly-review", "phase": "exited", "status": 1 }
+  ],
+  "runs:pr-triage": [
+    { "key": "e1002", "trigger": "github pull_request.opened", "at": "$NOW-600", "session": "automation pr-triage", "phase": "skipped_precheck", "detail": "the precheck exited with status 1" },
+    { "key": "e1001", "trigger": "github pull_request.opened", "at": "$NOW-7200", "session": "automation pr-triage", "phase": "missed", "detail": "the event waited longer than the grace period before it could start" }
+  ]
+}
